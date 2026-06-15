@@ -132,6 +132,8 @@ function makeTile(id, label, stream, muted) {
   const v = document.createElement("video");
   v.autoplay = true;
   v.playsInline = true;
+  v.setAttribute("playsinline", ""); // iOS Safari 用に属性でも指定
+  v.setAttribute("webkit-playsinline", "");
   v.muted = !!muted;
   v.srcObject = stream;
   const cap = document.createElement("span");
@@ -139,6 +141,8 @@ function makeTile(id, label, stream, muted) {
   cap.textContent = label;
   wrap.appendChild(v);
   wrap.appendChild(cap);
+  // タップで強制再生（iOSの自動再生ブロックの最終手段）
+  wrap.addEventListener("click", () => tryPlay(v));
   videosEl.appendChild(wrap);
   videoTiles.set(id, wrap);
   tryPlay(v);
@@ -336,6 +340,13 @@ function updateSpatialAudio() {
     );
     v.volume = vol;
     tile.style.opacity = (0.45 + 0.55 * vol).toFixed(2); // 遠いほど薄く表示
+
+    // 診断表示: 再生状態と受信解像度（黒画面の原因切り分け用）
+    const cap = tile.querySelector(".cap");
+    if (cap) {
+      const name = (others[id] && others[id].name) || "";
+      cap.textContent = `${name} ${v.paused ? "⏸停止" : "▶再生"} ${v.videoWidth}×${v.videoHeight}`;
+    }
   }
 }
 
