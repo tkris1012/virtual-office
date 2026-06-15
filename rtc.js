@@ -18,8 +18,17 @@ import {
 const RTC_CONFIG = {
   iceServers: [
     { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
-    // 本番で企業ファイアウォール配下も確実に繋ぐには、ここに TURN を追加。
-    // 例: { urls: "turn:xxx", username: "...", credential: "..." }
+    // 無料の公開TURN（モバイル回線/CGNAT などで P2P 直結できない時の中継）。
+    // ※公開無料のため不安定なことあり。本番運用では自前TURNやMetered有料枠を推奨。
+    {
+      urls: [
+        "turn:openrelay.metered.ca:80",
+        "turn:openrelay.metered.ca:443",
+        "turn:openrelay.metered.ca:443?transport=tcp",
+      ],
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
   ],
 };
 

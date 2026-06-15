@@ -109,6 +109,23 @@ document.getElementById("room-label").textContent = `room: ${ROOM}`;
 const videosEl = document.getElementById("videos");
 const videoTiles = new Map(); // id -> wrapper element
 
+// モバイルの自動再生対策：再生を試み、ブロックされたら次のユーザー操作で再試行
+const pendingPlays = new Set();
+function tryPlay(v) {
+  const p = v.play();
+  if (p && p.catch) p.catch(() => pendingPlays.add(v));
+}
+function flushPlays() {
+  pendingPlays.forEach((v) => {
+    v.play()
+      .then(() => pendingPlays.delete(v))
+      .catch(() => {});
+  });
+}
+["pointerdown", "touchstart", "keydown"].forEach((ev) =>
+  document.addEventListener(ev, flushPlays, true)
+);
+
 function makeTile(id, label, stream, muted) {
   const wrap = document.createElement("div");
   wrap.className = "tile";
@@ -124,11 +141,14 @@ function makeTile(id, label, stream, muted) {
   wrap.appendChild(cap);
   videosEl.appendChild(wrap);
   videoTiles.set(id, wrap);
+  tryPlay(v);
 }
 function addRemoteVideo(peerId, stream) {
   const existing = videoTiles.get(peerId);
   if (existing) {
-    existing.querySelector("video").srcObject = stream;
+    const v = existing.querySelector("video");
+    v.srcObject = stream;
+    tryPlay(v);
     return;
   }
   const name = (others[peerId] && others[peerId].name) || peerId;
