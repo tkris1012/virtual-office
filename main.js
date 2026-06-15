@@ -33,9 +33,71 @@ const ctx = canvas.getContext("2d");
 const W = canvas.width;
 const H = canvas.height;
 
+// ---- オフィスのマップ（壁・家具・ゾーン） ----
+const R = 16; // アバター半径（衝突マージン）
+
+// 通り抜け不可（type で見た目を変える）
+const WALLS = [
+  // 会議室A（左上）: 上・左・右の壁＋下は出入口を空ける
+  { x: 60, y: 70, w: 290, h: 14, type: "wall" },
+  { x: 60, y: 70, w: 14, h: 180, type: "wall" },
+  { x: 336, y: 70, w: 14, h: 180, type: "wall" },
+  { x: 60, y: 236, w: 100, h: 14, type: "wall" }, // 下・左側
+  { x: 270, y: 236, w: 80, h: 14, type: "wall" }, // 下・右側（出入口は中央）
+  { x: 130, y: 120, w: 150, h: 70, type: "desk" }, // 会議テーブル
+
+  // 中央〜右: デスクの島
+  { x: 520, y: 120, w: 120, h: 48, type: "desk" },
+  { x: 700, y: 120, w: 120, h: 48, type: "desk" },
+  { x: 520, y: 280, w: 120, h: 48, type: "desk" },
+  { x: 700, y: 280, w: 120, h: 48, type: "desk" },
+
+  // 下部の間仕切り（中央に通路を残す）
+  { x: 360, y: 430, w: 180, h: 14, type: "wall" },
+  { x: 640, y: 430, w: 260, h: 14, type: "wall" },
+
+  // 観葉植物
+  { x: 70, y: 540, w: 28, h: 28, type: "plant" },
+  { x: 880, y: 70, w: 28, h: 28, type: "plant" },
+  { x: 470, y: 520, w: 28, h: 28, type: "plant" },
+];
+
+// 通り抜け可（床の色分け＝ゾーン表示のみ）
+const ZONES = [
+  { x: 74, y: 84, w: 262, h: 152, color: "rgba(52,152,219,0.10)", label: "会議室A" },
+  { x: 660, y: 470, w: 240, h: 110, color: "rgba(46,204,113,0.10)", label: "ラウンジ" },
+];
+
+// その座標にアバター中心を置けるか（壁・画面外なら false）
+function canBeAt(x, y) {
+  if (x < R || x > W - R || y < R || y > H - R) return false;
+  for (const wll of WALLS) {
+    if (
+      x > wll.x - R &&
+      x < wll.x + wll.w + R &&
+      y > wll.y - R &&
+      y < wll.y + wll.h + R
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// 壁にめり込まない初期位置を探す
+function randomSpawn() {
+  for (let i = 0; i < 300; i++) {
+    const x = 40 + Math.random() * (W - 80);
+    const y = 40 + Math.random() * (H - 80);
+    if (canBeAt(x, y)) return { x, y };
+  }
+  return { x: W / 2, y: H / 2 };
+}
+
+const spawn = randomSpawn();
 const me = {
-  x: 200 + Math.random() * (W - 400),
-  y: 150 + Math.random() * (H - 300),
+  x: spawn.x,
+  y: spawn.y,
   name: myName,
   color: myColor,
 };
@@ -208,9 +270,17 @@ function step() {
   }
 
   if (dx || dy) {
-    me.x = Math.max(16, Math.min(W - 16, me.x + dx * SPEED));
-    me.y = Math.max(16, Math.min(H - 16, me.y + dy * SPEED));
-    dirty = true;
+    // X/Y を別々に判定 → 壁沿いに滑れる
+    const nx = me.x + dx * SPEED;
+    if (canBeAt(nx, me.y)) {
+      me.x = nx;
+      dirty = true;
+    }
+    const ny = me.y + dy * SPEED;
+    if (canBeAt(me.x, ny)) {
+      me.y = ny;
+      dirty = true;
+    }
   }
 }
 
@@ -291,8 +361,46 @@ function drawFloor() {
   }
 }
 
+// ゾーン（床の色分け・通り抜け可）
+function drawZones() {
+  for (const z of ZONES) {
+    ctx.fillStyle = z.color;
+    ctx.fillRect(z.x, z.y, z.w, z.h);
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.fillText(z.label, z.x + 8, z.y + 18);
+  }
+}
+
+// 壁・家具・植物（通り抜け不可）
+function drawWalls() {
+  for (const w of WALLS) {
+    if (w.type === "plant") {
+      ctx.fillStyle = "#6b4f3a"; // 鉢
+      ctx.fillRect(w.x, w.y + w.h * 0.6, w.w, w.h * 0.4);
+      ctx.beginPath(); // 葉
+      ctx.fillStyle = "#3a9d54";
+      ctx.arc(w.x + w.w / 2, w.y + w.h * 0.42, w.w * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+      continue;
+    }
+    if (w.type === "desk") {
+      ctx.fillStyle = "#5a4636";
+    } else {
+      ctx.fillStyle = "#3a4257";
+    }
+    ctx.fillRect(w.x, w.y, w.w, w.h);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx.strokeRect(w.x, w.y, w.w, w.h);
+  }
+}
+
 function render() {
   drawFloor();
+  drawZones();
+
   // 自分の通話範囲
   ctx.beginPath();
   ctx.arc(me.x, me.y, CALL_RADIUS, 0, Math.PI * 2);
@@ -303,6 +411,8 @@ function render() {
   ctx.lineWidth = 1.5;
   ctx.stroke();
   ctx.setLineDash([]);
+
+  drawWalls();
 
   for (const id in others) {
     drawAvatar(others[id], false, rtc && rtc.isConnected(id));
