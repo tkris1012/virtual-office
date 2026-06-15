@@ -1,0 +1,9 @@
+{
+  "_comment": "テスト用の緩いルール。まず動作確認するためのもの。本番では README の『本番向けルール』を参照し、Firebase Authentication と組み合わせて制限すること。",
+  "rules": {
+    "rooms": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}

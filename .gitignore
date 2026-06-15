@@ -1,0 +1,11 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+
+# Firebase CLI
+.firebase/
+firebase-debug.log
+
+# Node (将来ツールを足したとき用)
+node_modules/

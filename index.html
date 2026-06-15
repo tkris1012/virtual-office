@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Virtual Office — 近づくと話せる仮想オフィス</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header id="topbar">
+    <span class="logo">🏢 Virtual Office</span>
+    <span id="room-label"></span>
+    <span id="status">接続中…</span>
+  </header>
+
+  <main>
+    <!-- 通話映像のタイル一覧 -->
+    <section id="videos"></section>
+
+    <!-- マップ -->
+    <div id="stage">
+      <canvas id="map" width="960" height="600"></canvas>
+      <div id="hint">移動: 矢印キー / WASD　｜　青い円の中に誰かが入ると自動で通話が始まります</div>
+    </div>
+  </main>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
