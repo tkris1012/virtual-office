@@ -55,6 +55,13 @@ export class RTCManager {
     return !!this.peers[peerId];
   }
 
+  // 診断用: 接続状態と RTCPeerConnection を返す
+  getDiag(peerId) {
+    const e = this.peers[peerId];
+    if (!e) return null;
+    return { conn: e.pc.connectionState, ice: e.pc.iceConnectionState, pc: e.pc };
+  }
+
   async connectTo(peerId) {
     if (this.peers[peerId]) return;
     const initiator = this.myId < peerId;

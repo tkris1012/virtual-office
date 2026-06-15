@@ -316,15 +316,36 @@ function updateSpatialAudio() {
     );
     v.volume = vol;
     tile.style.opacity = (0.45 + 0.55 * vol).toFixed(2); // 遠いほど薄く表示
-
-    // 診断表示: 再生状態と受信解像度（黒画面の原因切り分け用）
-    const cap = tile.querySelector(".cap");
-    if (cap) {
-      const name = (others[id] && others[id].name) || "";
-      cap.textContent = `${name} ${v.paused ? "⏸停止" : "▶再生"} ${v.videoWidth}×${v.videoHeight}`;
-    }
   }
 }
+
+// 診断: 接続状態と受信映像の統計をタイル名に表示（黒画面の原因切り分け用）
+async function updateDiag() {
+  if (!rtc) return;
+  for (const id in others) {
+    const tile = videoTiles.get(id);
+    if (!tile) continue;
+    const d = rtc.getDiag(id);
+    if (!d) continue;
+    let rxKB = 0;
+    let fw = 0;
+    try {
+      const stats = await d.pc.getStats();
+      stats.forEach((s) => {
+        if (s.type === "inbound-rtp" && s.kind === "video") {
+          rxKB = Math.round((s.bytesReceived || 0) / 1024);
+          fw = s.frameWidth || 0;
+        }
+      });
+    } catch (e) {}
+    const v = tile.querySelector("video");
+    const play = v && v.paused ? "⏸" : "▶";
+    const cap = tile.querySelector(".cap");
+    const name = (others[id] && others[id].name) || "";
+    if (cap) cap.textContent = `${name} ${d.conn}/${d.ice} rx${rxKB}KB ${fw}w ${play}`;
+  }
+}
+setInterval(updateDiag, 1000);
 
 // ---- 描画 ----
 function drawAvatar(p, isMe, connected) {
