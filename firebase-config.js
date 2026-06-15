@@ -7,13 +7,14 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getDatabase } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 const firebaseConfig = {
-  apiKey: "ここに貼る",
-  authDomain: "your-project.firebaseapp.com",
-  databaseURL: "https://your-project-default-rtdb.firebaseio.com",
-  projectId: "your-project",
-  storageBucket: "your-project.appspot.com",
-  messagingSenderId: "000000000000",
-  appId: "1:000000000000:web:xxxxxxxxxxxxxxxx",
+  apiKey: "AIzaSyBm9SyrMDAfycpo38ZxgZKHgI5dud7Q6mU",
+  authDomain: "virtual-office-ec14d.firebaseapp.com",
+  databaseURL: "https://virtual-office-ec14d-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "virtual-office-ec14d",
+  storageBucket: "virtual-office-ec14d.firebasestorage.app",
+  messagingSenderId: "1066104130558",
+  appId: "1:1066104130558:web:44c989faaefbd3e2b54eaf",
+  measurementId: "G-TK8PVNL3B1",
 };
 
 const app = initializeApp(firebaseConfig);
