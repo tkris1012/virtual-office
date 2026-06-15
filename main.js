@@ -33,40 +33,27 @@ const ctx = canvas.getContext("2d");
 const W = canvas.width;
 const H = canvas.height;
 
-// ---- オフィスのマップ（壁・家具・ゾーン） ----
+// ---- オフィスのマップ（背景画像 office.png ＋ 壁の当たり判定） ----
 const R = 16; // アバター半径（衝突マージン）
+const DEBUG = new URLSearchParams(location.search).has("debug"); // ?debug で採寸グリッド表示
 
-// 通り抜け不可（type で見た目を変える）
-const WALLS = [
-  // 会議室A（左上）: 上・左・右の壁＋下は出入口を空ける
-  { x: 60, y: 70, w: 290, h: 14, type: "wall" },
-  { x: 60, y: 70, w: 14, h: 180, type: "wall" },
-  { x: 336, y: 70, w: 14, h: 180, type: "wall" },
-  { x: 60, y: 236, w: 100, h: 14, type: "wall" }, // 下・左側
-  { x: 270, y: 236, w: 80, h: 14, type: "wall" }, // 下・右側（出入口は中央）
-  { x: 130, y: 120, w: 150, h: 70, type: "desk" }, // 会議テーブル
+// 背景のオフィス画像
+const officeImg = new Image();
+let officeImgReady = false;
+officeImg.onload = () => (officeImgReady = true);
+officeImg.src = "office.png";
 
-  // 中央〜右: デスクの島
-  { x: 520, y: 120, w: 120, h: 48, type: "desk" },
-  { x: 700, y: 120, w: 120, h: 48, type: "desk" },
-  { x: 520, y: 280, w: 120, h: 48, type: "desk" },
-  { x: 700, y: 280, w: 120, h: 48, type: "desk" },
-
-  // 下部の間仕切り（中央に通路を残す）
-  { x: 360, y: 430, w: 180, h: 14, type: "wall" },
-  { x: 640, y: 430, w: 260, h: 14, type: "wall" },
-
-  // 観葉植物
-  { x: 70, y: 540, w: 28, h: 28, type: "plant" },
-  { x: 880, y: 70, w: 28, h: 28, type: "plant" },
-  { x: 470, y: 520, w: 28, h: 28, type: "plant" },
+// 壁(通行不可)を正規化座標(0..1)で定義 → 実ピクセルへ変換。
+// ?debug のグリッドを見ながら office.png のレイアウトに合わせて調整する。
+const WALL_RECTS_N = [
+  // 例: { x: 0.45, y: 0.05, w: 0.012, h: 0.4 }
 ];
-
-// 通り抜け可（床の色分け＝ゾーン表示のみ）
-const ZONES = [
-  { x: 74, y: 84, w: 262, h: 152, color: "rgba(52,152,219,0.10)", label: "会議室A" },
-  { x: 660, y: 470, w: 240, h: 110, color: "rgba(46,204,113,0.10)", label: "ラウンジ" },
-];
+const WALLS = WALL_RECTS_N.map((r) => ({
+  x: r.x * W,
+  y: r.y * H,
+  w: r.w * W,
+  h: r.h * H,
+}));
 
 // その座標にアバター中心を置けるか（壁・画面外なら false）
 function canBeAt(x, y) {
@@ -84,20 +71,9 @@ function canBeAt(x, y) {
   return true;
 }
 
-// 壁にめり込まない初期位置を探す
-function randomSpawn() {
-  for (let i = 0; i < 300; i++) {
-    const x = 40 + Math.random() * (W - 80);
-    const y = 40 + Math.random() * (H - 80);
-    if (canBeAt(x, y)) return { x, y };
-  }
-  return { x: W / 2, y: H / 2 };
-}
-
-const spawn = randomSpawn();
 const me = {
-  x: spawn.x,
-  y: spawn.y,
+  x: W * 0.2, // OPEN WORKSPACE あたり
+  y: H * 0.3,
   name: myName,
   color: myColor,
 };
@@ -367,83 +343,60 @@ function drawAvatar(p, isMe, connected) {
   ctx.strokeStyle = isMe ? "#fff" : "rgba(255,255,255,0.6)";
   ctx.stroke();
 
-  ctx.font = "13px sans-serif";
+  ctx.font = "bold 13px sans-serif";
   ctx.textAlign = "center";
+  const label = p.name + (isMe ? "（あなた）" : "");
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(0,0,0,0.7)"; // 明るい背景でも読めるよう縁取り
+  ctx.strokeText(label, p.x, p.y - 24);
   ctx.fillStyle = "#fff";
-  ctx.fillText(p.name + (isMe ? "（あなた）" : ""), p.x, p.y - 24);
+  ctx.fillText(label, p.x, p.y - 24);
 }
 
 function drawFloor() {
-  ctx.fillStyle = "#1f2433";
-  ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = "rgba(255,255,255,0.05)";
+  if (officeImgReady) {
+    ctx.drawImage(officeImg, 0, 0, W, H);
+  } else {
+    ctx.fillStyle = "#1f2433";
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+// デバッグ: 採寸グリッド(0.0〜1.0)と壁を可視化（?debug 時のみ）
+function drawDebug() {
+  ctx.save();
   ctx.lineWidth = 1;
-  for (let x = 0; x <= W; x += 40) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, H);
-    ctx.stroke();
+  ctx.strokeStyle = "rgba(255,255,0,0.3)";
+  ctx.fillStyle = "rgba(255,255,0,0.9)";
+  ctx.font = "11px monospace";
+  for (let i = 0; i <= 10; i++) {
+    const x = (i / 10) * W;
+    const y = (i / 10) * H;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.fillText((i / 10).toFixed(1), x + 2, 12);
+    ctx.fillText((i / 10).toFixed(1), 2, y + 12);
   }
-  for (let y = 0; y <= H; y += 40) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(W, y);
-    ctx.stroke();
-  }
-}
-
-// ゾーン（床の色分け・通り抜け可）
-function drawZones() {
-  for (const z of ZONES) {
-    ctx.fillStyle = z.color;
-    ctx.fillRect(z.x, z.y, z.w, z.h);
-    ctx.font = "12px sans-serif";
-    ctx.textAlign = "left";
-    ctx.fillStyle = "rgba(255,255,255,0.5)";
-    ctx.fillText(z.label, z.x + 8, z.y + 18);
-  }
-}
-
-// 壁・家具・植物（通り抜け不可）
-function drawWalls() {
-  for (const w of WALLS) {
-    if (w.type === "plant") {
-      ctx.fillStyle = "#6b4f3a"; // 鉢
-      ctx.fillRect(w.x, w.y + w.h * 0.6, w.w, w.h * 0.4);
-      ctx.beginPath(); // 葉
-      ctx.fillStyle = "#3a9d54";
-      ctx.arc(w.x + w.w / 2, w.y + w.h * 0.42, w.w * 0.55, 0, Math.PI * 2);
-      ctx.fill();
-      continue;
-    }
-    if (w.type === "desk") {
-      ctx.fillStyle = "#5a4636";
-    } else {
-      ctx.fillStyle = "#3a4257";
-    }
-    ctx.fillRect(w.x, w.y, w.w, w.h);
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = "rgba(0,0,0,0.35)";
-    ctx.strokeRect(w.x, w.y, w.w, w.h);
-  }
+  ctx.fillStyle = "rgba(255,0,0,0.35)";
+  for (const w of WALLS) ctx.fillRect(w.x, w.y, w.w, w.h);
+  ctx.restore();
 }
 
 function render() {
   drawFloor();
-  drawZones();
 
   // 自分の通話範囲
   ctx.beginPath();
   ctx.arc(me.x, me.y, CALL_RADIUS, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(52, 152, 219, 0.07)";
+  ctx.fillStyle = "rgba(52, 152, 219, 0.10)";
   ctx.fill();
   ctx.setLineDash([6, 6]);
-  ctx.strokeStyle = "rgba(52, 152, 219, 0.4)";
+  ctx.strokeStyle = "rgba(52, 152, 219, 0.55)";
   ctx.lineWidth = 1.5;
   ctx.stroke();
   ctx.setLineDash([]);
 
-  drawWalls();
+  if (DEBUG) drawDebug();
 
   for (const id in others) {
     drawAvatar(others[id], false, rtc && rtc.isConnected(id));
