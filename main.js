@@ -1,7 +1,7 @@
 // =============================================================
 //  メイン: マップ描画 / 移動 / 位置同期(presence) / 近接判定
 // =============================================================
-import { db } from "./firebase-config.js";
+import { db, auth } from "./firebase-config.js";
 import {
   ref,
   set,
@@ -9,17 +9,21 @@ import {
   onValue,
   onDisconnect,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { RTCManager } from "./rtc.js";
 
 // ---- 設定 ----
 const ROOM = new URLSearchParams(location.search).get("room") || "lobby";
 const CALL_RADIUS = 120; // この距離以内で通話開始
 const HANGUP_RADIUS = 175; // この距離を超えたら切断（ヒステリシスでバタつき防止）
+const FULL_VOLUME_RADIUS = 45; // この距離以内なら最大音量（以遠は離れるほど小さく）
 const SPEED = 3.2;
 
 // ---- 自分 ----
-const myId = Math.random().toString(36).slice(2, 10);
-const defaultName = "user-" + myId.slice(0, 4);
+let myId = null; // 匿名認証の uid を起動時にセット
+let meRef = null;
+const rand4 = Math.random().toString(36).slice(2, 6);
+const defaultName = "user-" + rand4;
 const nameParam = new URLSearchParams(location.search).get("name");
 const myName = (nameParam || prompt("名前を入力してください", defaultName) || defaultName).slice(0, 16);
 const myColor = `hsl(${Math.floor(Math.random() * 360)}, 70%, 55%)`;
@@ -77,37 +81,41 @@ function removeVideo(peerId) {
 }
 
 // ---- presence (Realtime Database) ----
-const meRef = ref(db, `rooms/${ROOM}/players/${myId}`);
-onDisconnect(meRef).remove(); // タブを閉じたら自動削除
-set(meRef, {
-  x: Math.round(me.x),
-  y: Math.round(me.y),
-  name: me.name,
-  color: me.color,
-  ts: Date.now(),
-});
+// 匿名サインインで uid が確定してから呼ぶ
+function initPresence() {
+  meRef = ref(db, `rooms/${ROOM}/players/${myId}`);
+  onDisconnect(meRef).remove(); // タブを閉じたら自動削除
+  set(meRef, {
+    x: Math.round(me.x),
+    y: Math.round(me.y),
+    name: me.name,
+    color: me.color,
+    ts: Date.now(),
+  });
 
-onValue(ref(db, `rooms/${ROOM}/players`), (snap) => {
-  const all = snap.val() || {};
-  for (const id in all) {
-    if (id === myId) continue;
-    others[id] = all[id];
-  }
-  // 退出したプレイヤーを掃除
-  for (const id in others) {
-    if (!all[id]) {
-      delete others[id];
-      if (rtc) rtc.disconnectFrom(id);
-      removeVideo(id);
+  onValue(ref(db, `rooms/${ROOM}/players`), (snap) => {
+    const all = snap.val() || {};
+    for (const id in all) {
+      if (id === myId) continue;
+      others[id] = all[id];
     }
-  }
-  document.getElementById("status").textContent = `オンライン: ${Object.keys(all).length}人`;
-});
+    // 退出したプレイヤーを掃除
+    for (const id in others) {
+      if (!all[id]) {
+        delete others[id];
+        if (rtc) rtc.disconnectFrom(id);
+        removeVideo(id);
+      }
+    }
+    document.getElementById("status").textContent = `オンライン: ${Object.keys(all).length}人`;
+  });
+}
 
 // 位置送信（動いてる時だけ・約12fps に間引いて無料枠を節約）
 let dirty = false;
 let lastSent = 0;
 function flushPosition(now) {
+  if (!meRef) return;
   if (dirty && now - lastSent > 80) {
     update(meRef, { x: Math.round(me.x), y: Math.round(me.y), ts: Date.now() });
     lastSent = now;
@@ -221,6 +229,26 @@ function checkProximity() {
   }
 }
 
+// 距離で音量フェード（近いほど大きく、遠いほど小さく＝Gather風）
+function updateSpatialAudio() {
+  if (!rtc) return;
+  for (const id in others) {
+    if (!rtc.isConnected(id)) continue;
+    const tile = videoTiles.get(id);
+    if (!tile) continue;
+    const v = tile.querySelector("video");
+    if (!v) continue;
+    const o = others[id];
+    const d = Math.hypot(o.x - me.x, o.y - me.y);
+    const vol = Math.max(
+      0,
+      Math.min(1, (HANGUP_RADIUS - d) / (HANGUP_RADIUS - FULL_VOLUME_RADIUS))
+    );
+    v.volume = vol;
+    tile.style.opacity = (0.45 + 0.55 * vol).toFixed(2); // 遠いほど薄く表示
+  }
+}
+
 // ---- 描画 ----
 function drawAvatar(p, isMe, connected) {
   if (connected) {
@@ -286,12 +314,33 @@ function loop(now) {
   step();
   flushPosition(now || 0);
   checkProximity();
+  updateSpatialAudio();
   render();
   requestAnimationFrame(loop);
 }
 
 // ---- 起動 ----
 async function start() {
+  // 1) 匿名サインイン（uid を自分のIDに使う）
+  try {
+    const cred = await signInAnonymously(auth);
+    myId = cred.user.uid;
+  } catch (e) {
+    console.error("匿名サインイン失敗:", e);
+    document.getElementById("status").textContent =
+      "サインイン失敗（Firebaseで匿名ログインを有効化してください）";
+    alert(
+      "Firebase Authentication の「匿名」サインインが未有効です。\n" +
+        "コンソール → Authentication → Sign-in method → 匿名 → 有効化 してください。\n\n" +
+        (e.code || e.message)
+    );
+    return;
+  }
+
+  // 2) presence 開始
+  initPresence();
+
+  // 3) カメラ/マイク取得
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -302,6 +351,7 @@ async function start() {
   }
   makeTile("__me__", me.name + "（あなた）", stream, true);
 
+  // 4) WebRTC マネージャ
   rtc = new RTCManager({
     db,
     roomId: ROOM,
@@ -311,6 +361,7 @@ async function start() {
     onClose: removeVideo,
   });
 
+  // 5) ループ開始
   requestAnimationFrame(loop);
 }
 

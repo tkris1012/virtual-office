@@ -1,9 +1,21 @@
 {
-  "_comment": "テスト用の緩いルール。まず動作確認するためのもの。本番では README の『本番向けルール』を参照し、Firebase Authentication と組み合わせて制限すること。",
+  "_comment": "本番向けルール: 匿名認証(auth)済みユーザーのみ。自分のアバターは自分だけが書き込み可。通話シグナリングは当事者のみ。",
   "rules": {
     "rooms": {
-      ".read": true,
-      ".write": true
+      "$room": {
+        "players": {
+          ".read": "auth != null",
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        },
+        "connections": {
+          ".read": "auth != null",
+          "$connId": {
+            ".write": "auth != null && $connId.contains(auth.uid)"
+          }
+        }
+      }
     }
   }
 }
