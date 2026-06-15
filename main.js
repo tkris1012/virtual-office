@@ -20,7 +20,8 @@ const SPEED = 3.2;
 // ---- 自分 ----
 const myId = Math.random().toString(36).slice(2, 10);
 const defaultName = "user-" + myId.slice(0, 4);
-const myName = (prompt("名前を入力してください", defaultName) || defaultName).slice(0, 16);
+const nameParam = new URLSearchParams(location.search).get("name");
+const myName = (nameParam || prompt("名前を入力してください", defaultName) || defaultName).slice(0, 16);
 const myColor = `hsl(${Math.floor(Math.random() * 360)}, 70%, 55%)`;
 
 const canvas = document.getElementById("map");
@@ -127,6 +128,11 @@ addEventListener("keyup", (e) => {
 const joy = { active: false, dx: 0, dy: 0, cx: 0, cy: 0, r: 60 };
 const joyEl = document.getElementById("joystick");
 const stickEl = document.getElementById("stick");
+
+// タッチ端末では確実に表示（@media が効かない端末向けの保険）
+if (joyEl && (("ontouchstart" in window) || navigator.maxTouchPoints > 0)) {
+  joyEl.style.display = "block";
+}
 
 function joyPoint(e) {
   if (e.touches && e.touches.length) return e.touches[0];
@@ -290,7 +296,8 @@ async function start() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
   } catch (e) {
-    alert("カメラ/マイクを利用できませんでした。移動はできますが通話はできません。\n" + e.message);
+    console.warn("getUserMedia 失敗:", e);
+    document.getElementById("status").textContent = "カメラ/マイク不可（移動のみ）";
     stream = new MediaStream();
   }
   makeTile("__me__", me.name + "（あなた）", stream, true);
