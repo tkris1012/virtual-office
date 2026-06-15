@@ -76,6 +76,8 @@ main {
 }
 #map {
   max-width: 100%;
+  max-height: calc(100dvh - 210px); /* 縦長マップが画面に収まるように */
+  width: auto;
   height: auto;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
