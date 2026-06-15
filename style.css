@@ -85,3 +85,32 @@ main {
   color: #9aa4b8;
   font-size: 13px;
 }
+
+/* タッチ用バーチャルジョイスティック（タッチ端末のみ表示） */
+#joystick {
+  display: none;
+  position: fixed;
+  left: 24px;
+  bottom: 24px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  touch-action: none;
+  z-index: 50;
+}
+#stick {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 54px;
+  height: 54px;
+  margin: -27px 0 0 -27px;
+  border-radius: 50%;
+  background: rgba(52, 152, 219, 0.85);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+@media (pointer: coarse) {
+  #joystick { display: block; }
+}

@@ -20,9 +20,12 @@
     <!-- マップ -->
     <div id="stage">
       <canvas id="map" width="960" height="600"></canvas>
-      <div id="hint">移動: 矢印キー / WASD　｜　青い円の中に誰かが入ると自動で通話が始まります</div>
+      <div id="hint">移動: 矢印キー / WASD（スマホは左下のスティック）｜ 青い円に誰かが入ると自動で通話開始</div>
     </div>
   </main>
+
+  <!-- タッチ端末用バーチャルジョイスティック（PCでは非表示） -->
+  <div id="joystick"><div id="stick"></div></div>
 
   <script type="module" src="main.js"></script>
 </body>

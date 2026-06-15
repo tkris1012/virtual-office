@@ -123,6 +123,57 @@ addEventListener("keyup", (e) => {
   keys[e.key.toLowerCase()] = false;
 });
 
+// ---- タッチ用バーチャルジョイスティック ----
+const joy = { active: false, dx: 0, dy: 0, cx: 0, cy: 0, r: 60 };
+const joyEl = document.getElementById("joystick");
+const stickEl = document.getElementById("stick");
+
+function joyPoint(e) {
+  if (e.touches && e.touches.length) return e.touches[0];
+  if (e.changedTouches && e.changedTouches.length) return e.changedTouches[0];
+  return e;
+}
+function joyStart(e) {
+  const rect = joyEl.getBoundingClientRect();
+  joy.cx = rect.left + rect.width / 2;
+  joy.cy = rect.top + rect.height / 2;
+  joy.r = rect.width / 2;
+  joy.active = true;
+  joyMove(e);
+  e.preventDefault();
+}
+function joyMove(e) {
+  if (!joy.active) return;
+  const p = joyPoint(e);
+  let ox = p.clientX - joy.cx;
+  let oy = p.clientY - joy.cy;
+  const dist = Math.hypot(ox, oy) || 1;
+  if (dist > joy.r) {
+    ox = (ox / dist) * joy.r;
+    oy = (oy / dist) * joy.r;
+  }
+  joy.dx = ox / joy.r; // -1..1（大きさ＝倒し具合）
+  joy.dy = oy / joy.r;
+  stickEl.style.transform = `translate(${ox}px, ${oy}px)`;
+  e.preventDefault();
+}
+function joyEnd() {
+  joy.active = false;
+  joy.dx = 0;
+  joy.dy = 0;
+  stickEl.style.transform = "translate(0px, 0px)";
+}
+if (joyEl) {
+  joyEl.addEventListener("touchstart", joyStart, { passive: false });
+  window.addEventListener("touchmove", joyMove, { passive: false });
+  window.addEventListener("touchend", joyEnd);
+  window.addEventListener("touchcancel", joyEnd);
+  // デスクトップでのマウス操作にも対応（確認用）
+  joyEl.addEventListener("mousedown", joyStart);
+  window.addEventListener("mousemove", joyMove);
+  window.addEventListener("mouseup", joyEnd);
+}
+
 function step() {
   let dx = 0;
   let dy = 0;
@@ -130,10 +181,21 @@ function step() {
   if (keys["arrowdown"] || keys["s"]) dy += 1;
   if (keys["arrowleft"] || keys["a"]) dx -= 1;
   if (keys["arrowright"] || keys["d"]) dx += 1;
+
   if (dx || dy) {
+    // キーボード: 単位ベクトル化して等速移動
     const len = Math.hypot(dx, dy);
-    me.x = Math.max(16, Math.min(W - 16, me.x + (dx / len) * SPEED));
-    me.y = Math.max(16, Math.min(H - 16, me.y + (dy / len) * SPEED));
+    dx /= len;
+    dy /= len;
+  } else if (joy.active && (joy.dx || joy.dy)) {
+    // ジョイスティック: 倒し具合(0..1)を速度に反映
+    dx = joy.dx;
+    dy = joy.dy;
+  }
+
+  if (dx || dy) {
+    me.x = Math.max(16, Math.min(W - 16, me.x + dx * SPEED));
+    me.y = Math.max(16, Math.min(H - 16, me.y + dy * SPEED));
     dirty = true;
   }
 }
