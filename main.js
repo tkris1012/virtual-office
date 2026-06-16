@@ -75,13 +75,34 @@ function canBeAt(x, y) {
   return true;
 }
 
+// ---- エリア（部屋）: 同じエリアにいる人同士は距離に関係なく通話 ----
+// 座標は office2.png に合わせた正規化(0..1)。?debug で枠を見ながら調整可。
+const ZONES = [
+  { id: "meeting", label: "会議室", x: 0.05, y: 0.03, w: 0.41, h: 0.28, rgb: "52,152,219" },
+  { id: "lounge", label: "ラウンジ", x: 0.47, y: 0.03, w: 0.49, h: 0.28, rgb: "46,204,113" },
+  { id: "focus", label: "集中スペース", x: 0.71, y: 0.37, w: 0.25, h: 0.2, rgb: "155,89,182" },
+  { id: "reception", label: "受付", x: 0.05, y: 0.34, w: 0.27, h: 0.18, rgb: "230,126,34" },
+];
+function zoneOf(p) {
+  for (const z of ZONES) {
+    const zx = z.x * W,
+      zy = z.y * H,
+      zw = z.w * W,
+      zh = z.h * H;
+    if (p.x >= zx && p.x <= zx + zw && p.y >= zy && p.y <= zy + zh) return z.id;
+  }
+  return null;
+}
+
 const me = {
   x: W * 0.45, // 中央の島デスクあたり
   y: H * 0.5,
   name: myName,
   color: myColor,
 };
-const others = {}; // id -> {x, y, name, color}
+const others = {}; // id -> {x, y, name, color, announcing?, summon?}
+let announcing = false; // 全体アナウンス中か（自分）
+let lastSummonTs = Date.now(); // 自分が処理済みの最新の集合ts（join前の古い集合は無視）
 
 document.getElementById("room-label").textContent = `room: ${ROOM}`;
 
@@ -161,9 +182,9 @@ function setupControls(media) {
     camBtn.textContent = on ? "🎥 カメラ ON" : "🚫 カメラ OFF";
     camBtn.classList.toggle("off", !on);
     camBtn.setAttribute("aria-pressed", String(on));
-    // 自分タイルはカメラON時のみ鏡像（OFF時はプレースホルダ文字を正しく表示）
+    // 自分タイルはカメラON時のみ鏡像（OFF/画面共有中はプレースホルダ/画面を正しく表示）
     const myTile = videoTiles.get("__me__");
-    if (myTile) myTile.classList.toggle("mirror", on);
+    if (myTile) myTile.classList.toggle("mirror", on && !media.screenOn);
   }
   function syncMicUI() {
     const on = media.micOn;
@@ -220,6 +241,67 @@ function setupControls(media) {
     img.src = URL.createObjectURL(file);
   });
 
+  // --- 画面共有 ---
+  const screenBtn = document.getElementById("btn-screen");
+  function syncScreenUI() {
+    const on = media.screenOn;
+    screenBtn.classList.toggle("active", on);
+    screenBtn.textContent = on ? "🖥️ 共有中（停止）" : "🖥️ 画面共有";
+    const myTile = videoTiles.get("__me__");
+    if (myTile) myTile.classList.toggle("mirror", media.cameraOn && !on);
+  }
+  media.onScreenEnd = syncScreenUI; // ブラウザ側「共有を停止」にも追従
+  screenBtn.addEventListener("click", async () => {
+    if (media.screenOn) {
+      media.stopScreenShare();
+    } else {
+      const r = await media.startScreenShare();
+      if (r && r.error) {
+        toast("画面共有を開始できませんでした");
+        return;
+      }
+    }
+    syncScreenUI();
+  });
+
+  // --- 全体アナウンス ---
+  const annBtn = document.getElementById("btn-announce");
+  annBtn.addEventListener("click", () => {
+    announcing = !announcing;
+    annBtn.classList.toggle("active", announcing);
+    annBtn.textContent = announcing ? "📢 アナウンス中（停止）" : "📢 アナウンス";
+    if (meRef) update(meRef, { announcing });
+    toast(announcing ? "📢 全体アナウンスを開始（全員に配信）" : "アナウンスを終了しました");
+  });
+
+  // --- 集合（特定の人を呼ぶ）---
+  const summonBtn = document.getElementById("btn-summon");
+  const panel = document.getElementById("summon-panel");
+  const listEl = document.getElementById("summon-list");
+  summonBtn.addEventListener("click", () => {
+    if (!panel.hidden) {
+      panel.hidden = true;
+      return;
+    }
+    renderSummonList(listEl);
+    panel.hidden = false;
+  });
+  document.getElementById("summon-cancel").addEventListener("click", () => (panel.hidden = true));
+  document.getElementById("summon-go").addEventListener("click", () => {
+    const targets = [...listEl.querySelectorAll("input:checked")].map((i) => i.value);
+    if (!targets.length) {
+      toast("集合させる人を選んでください");
+      return;
+    }
+    if (meRef) {
+      update(meRef, {
+        summon: { targets, x: Math.round(me.x), y: Math.round(me.y), ts: Date.now() },
+      });
+    }
+    panel.hidden = true;
+    toast(`📍 ${targets.length}人を自分の場所に集合させました`);
+  });
+
   syncCamUI();
   syncMicUI();
   syncBgUI();
@@ -235,6 +317,7 @@ function initPresence() {
     y: Math.round(me.y),
     name: me.name,
     color: me.color,
+    announcing: false,
     ts: Date.now(),
   });
 
@@ -250,6 +333,18 @@ function initPresence() {
         delete others[id];
         if (rtc) rtc.disconnectFrom(id);
         removeVideo(id);
+      }
+    }
+    // 集合（summon）の受信: 自分が対象なら集合地点へワープ
+    for (const id in all) {
+      if (id === myId) continue;
+      const s = all[id].summon;
+      if (s && Array.isArray(s.targets) && s.targets.includes(myId) && s.ts > lastSummonTs) {
+        lastSummonTs = s.ts;
+        me.x = s.x;
+        me.y = s.y;
+        dirty = true;
+        toast(`📍 ${all[id].name || "誰か"} があなたを集合させました`);
       }
     }
     document.getElementById("status").textContent = `オンライン: ${Object.keys(all).length}人`;
@@ -367,24 +462,37 @@ function step() {
   }
 }
 
-// ---- 近接判定 ----
+// ---- 接続判定（エリア / 全体アナウンス / 近接）----
 let rtc = null;
-function checkProximity() {
+function updateConnections() {
   if (!rtc) return;
+  const mz = zoneOf(me);
   for (const id in others) {
     const o = others[id];
-    const d = Math.hypot(o.x - me.x, o.y - me.y);
-    if (d <= CALL_RADIUS && !rtc.isConnected(id)) {
-      rtc.connectTo(id);
-    } else if (d > HANGUP_RADIUS && rtc.isConnected(id)) {
-      rtc.disconnectFrom(id);
+    const connected = rtc.isConnected(id);
+    let want;
+    if (announcing || o.announcing) {
+      want = true; // アナウンス中は全員と接続
+    } else {
+      const oz = zoneOf(o);
+      if (mz && oz) {
+        want = mz === oz; // 同じ部屋にいれば通話
+      } else if (!mz && !oz) {
+        const d = Math.hypot(o.x - me.x, o.y - me.y);
+        want = connected ? d <= HANGUP_RADIUS : d <= CALL_RADIUS; // 屋外は近接＋ヒステリシス
+      } else {
+        want = false; // 片方だけ部屋の中なら繋がない
+      }
     }
+    if (want && !connected) rtc.connectTo(id);
+    else if (!want && connected) rtc.disconnectFrom(id);
   }
 }
 
 // 距離で音量フェード（近いほど大きく、遠いほど小さく＝Gather風）
 function updateSpatialAudio() {
   if (!rtc) return;
+  const mz = zoneOf(me);
   for (const id in others) {
     if (!rtc.isConnected(id)) continue;
     const tile = videoTiles.get(id);
@@ -392,13 +500,56 @@ function updateSpatialAudio() {
     const v = tile.querySelector("video");
     if (!v) continue;
     const o = others[id];
-    const d = Math.hypot(o.x - me.x, o.y - me.y);
-    const vol = Math.max(
-      0,
-      Math.min(1, (HANGUP_RADIUS - d) / (HANGUP_RADIUS - FULL_VOLUME_RADIUS))
-    );
+    let vol;
+    if (announcing || o.announcing || (mz && zoneOf(o) === mz)) {
+      vol = 1; // 部屋内 / アナウンスは全員フル音量
+    } else {
+      const d = Math.hypot(o.x - me.x, o.y - me.y);
+      vol = Math.max(0, Math.min(1, (HANGUP_RADIUS - d) / (HANGUP_RADIUS - FULL_VOLUME_RADIUS)));
+    }
     v.volume = vol;
     tile.style.opacity = (0.45 + 0.55 * vol).toFixed(2); // 遠いほど薄く表示
+  }
+}
+
+// ---- トースト / バナー / 集合リスト ----
+function toast(msg) {
+  const wrap = document.getElementById("toasts");
+  if (!wrap) return;
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+function updateBanner() {
+  const banner = document.getElementById("banner");
+  if (!banner) return;
+  const names = [];
+  if (announcing) names.push(me.name);
+  for (const id in others) if (others[id].announcing) names.push(others[id].name || "誰か");
+  if (names.length) {
+    banner.hidden = false;
+    banner.textContent = "📢 " + names.join("、") + " がアナウンス中";
+  } else {
+    banner.hidden = true;
+  }
+}
+function renderSummonList(listEl) {
+  listEl.innerHTML = "";
+  const ids = Object.keys(others);
+  if (!ids.length) {
+    listEl.innerHTML = '<div class="empty">他に誰もいません</div>';
+    return;
+  }
+  for (const id of ids) {
+    const label = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = id;
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(" " + (others[id].name || id.slice(0, 5))));
+    listEl.appendChild(label);
   }
 }
 
@@ -486,19 +637,47 @@ function drawDebug() {
   ctx.restore();
 }
 
+// エリア（部屋）の枠。自分がいる部屋は強調表示。
+function drawZones() {
+  const mz = zoneOf(me);
+  for (const z of ZONES) {
+    const zx = z.x * W,
+      zy = z.y * H,
+      zw = z.w * W,
+      zh = z.h * H;
+    const mine = mz === z.id;
+    ctx.fillStyle = `rgba(${z.rgb},${mine ? 0.2 : 0.08})`;
+    ctx.fillRect(zx, zy, zw, zh);
+    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = `rgba(${z.rgb},${mine ? 0.95 : 0.5})`;
+    ctx.lineWidth = mine ? 2.5 : 1.5;
+    ctx.strokeRect(zx, zy, zw, zh);
+    ctx.setLineDash([]);
+    if (mine) {
+      ctx.font = "bold 12px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = `rgba(${z.rgb},1)`;
+      ctx.fillText("🔊 " + z.label + " で通話中", zx + zw / 2, zy + zh - 8);
+    }
+  }
+}
+
 function render() {
   drawFloor();
+  drawZones();
 
-  // 自分の通話範囲
-  ctx.beginPath();
-  ctx.arc(me.x, me.y, CALL_RADIUS, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(52, 152, 219, 0.10)";
-  ctx.fill();
-  ctx.setLineDash([6, 6]);
-  ctx.strokeStyle = "rgba(52, 152, 219, 0.55)";
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.setLineDash([]);
+  // 自分の通話範囲（部屋にいる時・アナウンス中は出さない）
+  if (!zoneOf(me) && !announcing) {
+    ctx.beginPath();
+    ctx.arc(me.x, me.y, CALL_RADIUS, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(52, 152, 219, 0.10)";
+    ctx.fill();
+    ctx.setLineDash([6, 6]);
+    ctx.strokeStyle = "rgba(52, 152, 219, 0.55)";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 
   if (DEBUG) drawDebug();
 
@@ -511,8 +690,9 @@ function render() {
 function loop(now) {
   step();
   flushPosition(now || 0);
-  checkProximity();
+  updateConnections();
   updateSpatialAudio();
+  updateBanner();
   render();
   requestAnimationFrame(loop);
 }

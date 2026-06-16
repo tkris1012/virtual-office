@@ -29,7 +29,28 @@
     <button id="btn-bg-image" class="ctrl" type="button">画像を選択</button>
     <input id="bg-file" type="file" accept="image/*" hidden />
     <span id="bg-note"></span>
+
+    <span class="ctrl-sep"></span>
+    <button id="btn-screen" class="ctrl" type="button">🖥️ 画面共有</button>
+    <button id="btn-announce" class="ctrl" type="button">📢 アナウンス</button>
+    <button id="btn-summon" class="ctrl" type="button">👥 集合</button>
   </div>
+
+  <!-- アナウンス中バナー -->
+  <div id="banner" hidden></div>
+
+  <!-- 集合パネル（オンライン一覧から選んで呼び出す） -->
+  <div id="summon-panel" hidden>
+    <div class="sp-head">ここに集合させる人を選択</div>
+    <div id="summon-list"></div>
+    <div class="sp-actions">
+      <button id="summon-go" class="ctrl" type="button">📍 ここに集合</button>
+      <button id="summon-cancel" class="ctrl" type="button">閉じる</button>
+    </div>
+  </div>
+
+  <!-- トースト通知 -->
+  <div id="toasts"></div>
 
   <main>
     <!-- 通話映像のタイル一覧 -->

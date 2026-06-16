@@ -33,6 +33,81 @@ export class MediaController {
     this.segBusy = false;
     this._segFailed = false;
     this._stopped = false;
+
+    // 画面共有
+    this.screenOn = false;
+    this.screenStream = null;
+    this.screenVideo = null;
+    this.onScreenEnd = null; // ブラウザ側の「共有を停止」で呼ばれる
+  }
+
+  // ---- 画面共有 ----
+  // canvas に画面を描くことで、送出トラック（canvas captureStream）を差し替えず
+  // 全ピア（既存・新規とも）に自動反映。再ネゴシエーション不要。
+  async startScreenShare() {
+    try {
+      this.screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 15 },
+        audio: false,
+      });
+    } catch (e) {
+      return { error: "denied" };
+    }
+    const track = this.screenStream.getVideoTracks()[0];
+    if (!track) return { error: "no_track" };
+
+    this.screenVideo = document.createElement("video");
+    this.screenVideo.autoplay = true;
+    this.screenVideo.muted = true;
+    this.screenVideo.playsInline = true;
+    this.screenVideo.setAttribute("playsinline", "");
+    this.screenVideo.srcObject = this.screenStream;
+    this.screenVideo.play().catch(() => {});
+
+    // 解像度確保のため canvas を画面サイズへ（最大1280x720）。captureStream は追従する。
+    const s = track.getSettings();
+    this._camW = this.canvas.width;
+    this._camH = this.canvas.height;
+    this.canvas.width = Math.min(s.width || 1280, 1280);
+    this.canvas.height = Math.min(s.height || 720, 720);
+
+    track.addEventListener("ended", () => this.stopScreenShare()); // 「共有を停止」ボタン
+    this.screenOn = true;
+    return { ok: true };
+  }
+
+  stopScreenShare() {
+    if (!this.screenOn) return;
+    this.screenOn = false;
+    if (this.screenStream) this.screenStream.getTracks().forEach((t) => t.stop());
+    this.screenStream = null;
+    this.screenVideo = null;
+    if (this._camW) {
+      this.canvas.width = this._camW;
+      this.canvas.height = this._camH;
+    }
+    if (this.onScreenEnd) this.onScreenEnd();
+  }
+
+  toggleScreenShare() {
+    return this.screenOn ? (this.stopScreenShare(), { ok: true, on: false }) : this.startScreenShare();
+  }
+
+  _drawScreen(W, H) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.filter = "none";
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, W, H);
+    const v = this.screenVideo;
+    if (v && v.readyState >= 2 && v.videoWidth) {
+      const scale = Math.min(W / v.videoWidth, H / v.videoHeight); // 全体が映るように contain
+      const dw = v.videoWidth * scale;
+      const dh = v.videoHeight * scale;
+      ctx.drawImage(v, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    }
+    ctx.restore();
   }
 
   // カメラ/マイク取得 → 処理パイプライン起動 → 送出用ストリームを返す
@@ -231,7 +306,9 @@ export class MediaController {
       const W = this.canvas.width;
       const H = this.canvas.height;
       try {
-        if (!this.cameraOn || !this.hasCamera) {
+        if (this.screenOn) {
+          this._drawScreen(W, H);
+        } else if (!this.cameraOn || !this.hasCamera) {
           this._drawPlaceholder();
         } else if (this.mode === "none" || !this.segReady) {
           if (this.srcVideo.readyState >= 2) ctx.drawImage(this.srcVideo, 0, 0, W, H);

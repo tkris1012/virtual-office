@@ -72,6 +72,80 @@ html, body {
 #controls input[type="range"] { width: 120px; accent-color: var(--accent); }
 #bg-note { font-size: 12px; color: #9aa4b8; }
 
+/* 機能ボタンの区切り */
+.ctrl-sep {
+  width: 1px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.15);
+  margin: 0 2px;
+}
+/* 有効中のトグル（画面共有中・アナウンス中）は緑系で明示 */
+.ctrl.active {
+  background: #1f6f43;
+  border-color: rgba(46, 204, 113, 0.6);
+}
+
+/* アナウンス中バナー */
+#banner {
+  padding: 8px 16px;
+  background: linear-gradient(90deg, #b8860b, #8a6d1a);
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* 集合パネル */
+#summon-panel {
+  position: fixed;
+  right: 16px;
+  top: 110px;
+  width: 240px;
+  max-height: 60vh;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  padding: 12px;
+  z-index: 60;
+}
+#summon-panel .sp-head { font-size: 13px; color: #cdd6ea; margin-bottom: 8px; }
+#summon-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+#summon-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+#summon-list label:hover { background: #2a3145; }
+#summon-list .empty { color: #9aa4b8; font-size: 13px; }
+.sp-actions { display: flex; gap: 8px; }
+
+/* トースト通知 */
+#toasts {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 70;
+  pointer-events: none;
+}
+.toast {
+  background: rgba(20, 24, 36, 0.95);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 14px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
 main {
   display: flex;
   flex-direction: column;
