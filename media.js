@@ -303,6 +303,17 @@ export class MediaController {
     const tick = async () => {
       if (this._stopped) return;
       const ctx = this.ctx;
+      // カメラの実フレーム比に canvas を合わせる（縦横比の歪み＝顔つぶれ防止）。
+      // モバイルは getSettings() と実 videoWidth/Height が食い違うことがあるため、
+      // 実際にデコードされたフレーム寸法へ追従させる。
+      if (!this.screenOn && this.srcVideo && this.srcVideo.videoWidth) {
+        const vw = this.srcVideo.videoWidth;
+        const vh = this.srcVideo.videoHeight;
+        if (this.canvas.width !== vw || this.canvas.height !== vh) {
+          this.canvas.width = vw;
+          this.canvas.height = vh;
+        }
+      }
       const W = this.canvas.width;
       const H = this.canvas.height;
       try {
