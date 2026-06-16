@@ -9,3 +9,6 @@ firebase-debug.log
 
 # Node (将来ツールを足したとき用)
 node_modules/
+
+# ローカルのエディタ/プレビュー設定（共有不要）
+.claude/

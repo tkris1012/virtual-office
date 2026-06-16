@@ -10,7 +10,8 @@ import {
   onDisconnect,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 import { signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { RTCManager } from "./rtc.js";
+import { RTCManager, getIceServers, runIceTest } from "./rtc.js";
+import { MediaController } from "./media.js";
 
 // ---- 設定 ----
 const ROOM = new URLSearchParams(location.search).get("room") || "lobby";
@@ -25,7 +26,10 @@ let meRef = null;
 const rand4 = Math.random().toString(36).slice(2, 6);
 const defaultName = "user-" + rand4;
 const nameParam = new URLSearchParams(location.search).get("name");
-const myName = (nameParam || prompt("名前を入力してください", defaultName) || defaultName).slice(0, 16);
+const ICETEST = new URLSearchParams(location.search).has("icetest"); // 診断画面では名前を聞かない
+const myName = (
+  nameParam || (ICETEST ? defaultName : prompt("名前を入力してください", defaultName)) || defaultName
+).slice(0, 16);
 const myColor = `hsl(${Math.floor(Math.random() * 360)}, 70%, 55%)`;
 
 const canvas = document.getElementById("map");
@@ -102,9 +106,9 @@ function flushPlays() {
   document.addEventListener(ev, flushPlays, true)
 );
 
-function makeTile(id, label, stream, muted) {
+function makeTile(id, label, stream, muted, local) {
   const wrap = document.createElement("div");
-  wrap.className = "tile";
+  wrap.className = "tile" + (local ? " local mirror" : "");
   const v = document.createElement("video");
   v.autoplay = true;
   v.playsInline = true;
@@ -140,6 +144,85 @@ function removeVideo(peerId) {
     el.remove();
     videoTiles.delete(peerId);
   }
+}
+
+// ---- メディア操作バー（カメラ/マイク/背景）の配線 ----
+function setupControls(media) {
+  const camBtn = document.getElementById("btn-cam");
+  const micBtn = document.getElementById("btn-mic");
+  const bgMode = document.getElementById("bg-mode");
+  const blurRange = document.getElementById("blur-range");
+  const bgImageBtn = document.getElementById("btn-bg-image");
+  const bgFile = document.getElementById("bg-file");
+  const bgNote = document.getElementById("bg-note");
+
+  function syncCamUI() {
+    const on = media.cameraOn;
+    camBtn.textContent = on ? "🎥 カメラ ON" : "🚫 カメラ OFF";
+    camBtn.classList.toggle("off", !on);
+    camBtn.setAttribute("aria-pressed", String(on));
+    // 自分タイルはカメラON時のみ鏡像（OFF時はプレースホルダ文字を正しく表示）
+    const myTile = videoTiles.get("__me__");
+    if (myTile) myTile.classList.toggle("mirror", on);
+  }
+  function syncMicUI() {
+    const on = media.micOn;
+    micBtn.textContent = on ? "🎤 マイク ON" : "🔇 マイク OFF";
+    micBtn.classList.toggle("off", !on);
+    micBtn.setAttribute("aria-pressed", String(on));
+  }
+  function syncBgUI() {
+    blurRange.style.display = bgMode.value === "blur" ? "" : "none";
+    bgImageBtn.style.display = bgMode.value === "image" ? "" : "none";
+  }
+
+  camBtn.addEventListener("click", () => {
+    media.toggleCamera();
+    syncCamUI();
+  });
+  micBtn.addEventListener("click", () => {
+    media.toggleMic();
+    syncMicUI();
+  });
+
+  bgMode.addEventListener("change", async () => {
+    const want = bgMode.value;
+    bgNote.textContent = want === "none" ? "" : "背景処理を準備中…";
+    const res = await media.setBackground(want);
+    if (res.error === "segmentation_unavailable") {
+      bgMode.value = "none";
+      bgNote.textContent = "⚠ 背景処理を読み込めませんでした（ネット環境/対応ブラウザをご確認ください）";
+    } else {
+      bgNote.textContent = "";
+    }
+    syncBgUI();
+  });
+
+  blurRange.addEventListener("input", () => media.setBlurAmount(blurRange.value));
+
+  bgImageBtn.addEventListener("click", () => bgFile.click());
+  bgFile.addEventListener("change", () => {
+    const file = bgFile.files && bgFile.files[0];
+    if (!file) return;
+    const img = new Image();
+    img.onload = async () => {
+      const res = await media.setBackground("image", img);
+      if (res.error) {
+        bgMode.value = "none";
+        bgNote.textContent = "⚠ 背景処理を読み込めませんでした";
+      } else {
+        bgMode.value = "image";
+        bgNote.textContent = "バーチャル背景: 画像を設定しました";
+      }
+      syncBgUI();
+    };
+    img.onerror = () => (bgNote.textContent = "⚠ 画像の読み込みに失敗しました");
+    img.src = URL.createObjectURL(file);
+  });
+
+  syncCamUI();
+  syncMicUI();
+  syncBgUI();
 }
 
 // ---- presence (Realtime Database) ----
@@ -455,33 +538,23 @@ async function start() {
   // 2) presence 開始
   initPresence();
 
-  // 3) カメラ/マイク取得（iOS対策で前面カメラ指定＋段階フォールバック）
-  let stream = null;
-  const tries = [
-    { video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: true },
-    { video: true, audio: true },
-    { audio: true },
-  ];
-  for (const c of tries) {
-    try {
-      stream = await navigator.mediaDevices.getUserMedia(c);
-      break;
-    } catch (e) {
-      console.warn("getUserMedia 失敗:", c, e);
-    }
-  }
-  if (!stream) stream = new MediaStream();
-  if (stream.getVideoTracks().length === 0) {
+  // 3) メディア（カメラ/マイク/背景効果）を起動。送出ストリーム＝加工後の映像＋マイク
+  const media = new MediaController();
+  const stream = await media.init();
+  if (!media.hasCamera) {
     document.getElementById("status").textContent = "カメラ無し（音声/移動のみ）";
   }
-  makeTile("__me__", me.name + "（あなた）", stream, true);
+  makeTile("__me__", me.name + "（あなた）", stream, true, true);
+  setupControls(media);
 
-  // 4) WebRTC マネージャ
+  // 4) WebRTC マネージャ（iceServers は起動時に一度だけ解決＝Metered動的取得も反映）
+  const iceServers = await getIceServers();
   rtc = new RTCManager({
     db,
     roomId: ROOM,
     myId,
     localStream: stream,
+    iceServers,
     onRemoteStream: addRemoteVideo,
     onClose: removeVideo,
   });
@@ -490,4 +563,39 @@ async function start() {
   requestAnimationFrame(loop);
 }
 
-start();
+// ---- ICE 候補テスト画面（?icetest）----
+// iPhone 等で開発者ツールが使えなくても、設定中の TURN が効いているか
+// 画面でそのまま確認できる。relay 候補が出れば黒画面は解消する見込み。
+async function runIceTestUI() {
+  const box = document.createElement("div");
+  box.style.cssText =
+    "position:fixed;inset:0;background:#0b0e16;color:#e6e6e6;" +
+    "font:13px/1.6 ui-monospace,monospace;padding:20px;overflow:auto;" +
+    "z-index:99999;white-space:pre-wrap;-webkit-overflow-scrolling:touch;";
+  document.body.appendChild(box);
+
+  const iceServers = await getIceServers();
+  box.textContent =
+    "ICE候補テスト実行中…（最大8秒）\n\n設定中の iceServers:\n" +
+    JSON.stringify(iceServers, null, 2);
+
+  const { types, errors } = await runIceTest(iceServers);
+  const relayOk = (types.relay || 0) > 0;
+  box.textContent =
+    (relayOk
+      ? "✅ relay 候補あり = TURN は正常に使えています\n（これで相手の映像が出るはず）\n\n"
+      : "❌ relay 候補なし = TURN が効いていません\n（同一Wi-Fiでも直結できない環境では黒画面の原因）\n\n") +
+    "候補タイプ別件数: " +
+    JSON.stringify(types) +
+    "\n\nICEエラー:\n" +
+    (errors.length ? errors.join("\n") : "なし") +
+    "\n\n設定中の iceServers:\n" +
+    JSON.stringify(iceServers, null, 2) +
+    "\n\n（通常画面に戻るには URL の ?icetest を外して再読み込み）";
+}
+
+if (ICETEST) {
+  runIceTestUI();
+} else {
+  start();
+}

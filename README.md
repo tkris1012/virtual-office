@@ -30,7 +30,8 @@ virtual-office/
 ├── index.html          画面
 ├── style.css           スタイル
 ├── firebase-config.js  ★ Firebase の設定をここに貼る
-├── main.js             マップ・移動・位置同期・近接判定
+├── main.js             マップ・移動・位置同期・近接判定・操作バー配線
+├── media.js            カメラ/マイク制御・背景ぼかし/バーチャル背景
 ├── rtc.js              WebRTC マネージャ（接続/切断）
 ├── database.rules.json RTDB セキュリティルール（テスト用）
 └── README.md
@@ -120,8 +121,11 @@ git push -u origin main
 
 - **RTDB 無料(Spark) の同時接続は約 100**。社内ツールならまず十分だが、これが実質の同時人数上限。
 - 位置更新は無料枠を食うので、**動いている時だけ・間引いて**送っている（`main.js` の `flushPosition`）。
-- **TURN だけは無料が難しい**。社内・自宅は P2P 直結できるが、厳しい企業ファイアウォール配下の一部は
-  中継(TURN)が必要。必要になったら Metered.ca の無料枠などを `rtc.js` の `iceServers` に追加する。
+- **TURN だけは無料が難しい**。社内・自宅は P2P 直結できるが、厳しいファイアウォール配下や
+  Wi-Fiのクライアント分離環境では中継(TURN)が必要（相手が黒画面になる主因）。
+  `rtc.js` 冒頭の `METERED`（Metered 動的取得・無料20GB/月）か `STATIC_TURN`（Twilio/自前coturn 等）に
+  資格情報を入れる。設定後 `?icetest` を付けて開くと relay 候補が出るか画面で確認できる。
+  （旧 openrelay の固定資格は廃止＝API Key 必須になったため削除済み。）
 
 ## 実装済みの主な機能
 
@@ -129,6 +133,8 @@ git push -u origin main
 - 近接トリガーの自動ビデオ/音声通話（WebRTC P2P）
 - **距離による音量フェード**（離れるほど小さく＋タイルが薄くなる）
 - 匿名認証＋本番ルール（自分のアバターは自分だけ操作可）
+- **カメラ ON/OFF・マイク ON/OFF**（画面上部の操作バー）
+- **背景ぼかし / バーチャル背景**（MediaPipe Selfie Segmentation・画像アップロード対応／`media.js`）
 
 ## これからの拡張アイデア
 

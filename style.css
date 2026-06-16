@@ -27,6 +27,51 @@ html, body {
 #room-label { color: #9aa4b8; font-size: 14px; }
 #status { margin-left: auto; color: #9aa4b8; font-size: 14px; }
 
+/* メディア操作バー */
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.ctrl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font-size: 14px;
+  color: var(--text);
+  background: #2a3145;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ctrl:hover { background: #333c54; }
+/* OFF 状態のトグルは赤系で明示 */
+.ctrl.off {
+  background: #5a2230;
+  border-color: rgba(255, 120, 140, 0.5);
+}
+.ctrl-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #cdd6ea;
+}
+#controls select {
+  padding: 6px 8px;
+  color: var(--text);
+  background: #2a3145;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+}
+#controls input[type="range"] { width: 120px; accent-color: var(--accent); }
+#bg-note { font-size: 12px; color: #9aa4b8; }
+
 main {
   display: flex;
   flex-direction: column;
@@ -55,7 +100,11 @@ main {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transform: scaleX(-1); /* 鏡像表示 */
+}
+/* 自分の映像だけ鏡像（セルフィー表示）。相手の映像は反転しない。
+   カメラオフ時はプレースホルダの文字が読めるよう反転を外す。 */
+.tile.local.mirror video {
+  transform: scaleX(-1);
 }
 .tile .cap {
   position: absolute;
