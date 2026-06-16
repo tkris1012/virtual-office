@@ -14,6 +14,12 @@ html, body {
   color: var(--text);
   font-family: system-ui, "Segoe UI", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
 }
+/* ページ全体を縦フレックスにして #map が残り領域を埋める（カメラのビューポート） */
+body {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
 
 #topbar {
   display: flex;
@@ -147,6 +153,8 @@ html, body {
 }
 
 main {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -155,10 +163,10 @@ main {
 
 /* 映像タイル一覧 */
 #videos {
+  flex: 0 0 auto;
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  min-height: 0;
 }
 .tile {
   position: relative;
@@ -192,21 +200,26 @@ main {
 
 /* マップ */
 #stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
 }
 #map {
-  max-width: 100%;
-  max-height: calc(100dvh - 210px); /* 縦長マップが画面に収まるように */
-  width: auto;
-  height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  max-width: 1000px; /* PCで広がりすぎないように上限 */
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  background: #11131a;
 }
 #hint {
+  flex: 0 0 auto;
   color: #9aa4b8;
   font-size: 13px;
 }

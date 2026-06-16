@@ -34,8 +34,36 @@ const myColor = `hsl(${Math.floor(Math.random() * 360)}, 70%, 55%)`;
 
 const canvas = document.getElementById("map");
 const ctx = canvas.getContext("2d");
-const W = canvas.width;
-const H = canvas.height;
+
+// ---- ワールド（マップ）座標。RTDBで共有する座標系。office2.png の基準サイズ。----
+// 既存コード(ゾーン/壁/描画)はワールド座標で書かれているため、名前は W/H のまま固定値にする。
+const W = 640; // WORLD_W
+const H = 960; // WORLD_H
+
+// ---- カメラ（各端末ローカル・通信しない）。アバターを追従しズームしてスクロール表示 ----
+const MOBILE = matchMedia("(pointer: coarse)").matches || window.innerWidth < 700;
+const camera = { x: W / 2, y: H / 2, zoom: MOBILE ? 1.9 : 1.2 }; // 端末別の既定ズーム
+let dpr = 1;
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.max(1, Math.round(rect.width * dpr));
+  canvas.height = Math.max(1, Math.round(rect.height * dpr));
+}
+// 表示サイズの変化（回転/リサイズ/タイル増減）に追従
+new ResizeObserver(resizeCanvas).observe(canvas);
+
+function updateCamera() {
+  // アバターへスムーズ追従
+  camera.x += (me.x - camera.x) * 0.15;
+  camera.y += (me.y - camera.y) * 0.15;
+  // マップ外の黒余白を出さないようクランプ（ビューがワールドより大きければ中央寄せ）
+  const s = camera.zoom * dpr;
+  const halfW = canvas.width / 2 / s;
+  const halfH = canvas.height / 2 / s;
+  camera.x = halfW * 2 >= W ? W / 2 : Math.max(halfW, Math.min(W - halfW, camera.x));
+  camera.y = halfH * 2 >= H ? H / 2 : Math.max(halfH, Math.min(H - halfH, camera.y));
+}
 
 // ---- オフィスのマップ（背景画像 office.png ＋ 壁の当たり判定） ----
 const R = 16; // アバター半径（衝突マージン）
@@ -100,6 +128,8 @@ const me = {
   name: myName,
   color: myColor,
 };
+camera.x = me.x; // 開始時のカメラを自分に合わせる（追従の初期ジャンプ防止）
+camera.y = me.y;
 const others = {}; // id -> {x, y, name, color, announcing?, summon?}
 let announcing = false; // 全体アナウンス中か（自分）
 let lastSummonTs = Date.now(); // 自分が処理済みの最新の集合ts（join前の古い集合は無視）
@@ -663,6 +693,15 @@ function drawZones() {
 }
 
 function render() {
+  // 画面クリア（スクリーン座標）
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = "#11131a";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // カメラ変換: 以降は全てワールド座標で描ける（背景画像・ゾーン・アバター）
+  const s = camera.zoom * dpr;
+  ctx.setTransform(s, 0, 0, s, canvas.width / 2 - camera.x * s, canvas.height / 2 - camera.y * s);
+
   drawFloor();
   drawZones();
 
@@ -685,6 +724,8 @@ function render() {
     drawAvatar(others[id], false, rtc && rtc.isConnected(id));
   }
   drawAvatar(me, true, false);
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0); // 後始末
 }
 
 function loop(now) {
@@ -693,6 +734,7 @@ function loop(now) {
   updateConnections();
   updateSpatialAudio();
   updateBanner();
+  updateCamera();
   render();
   requestAnimationFrame(loop);
 }
@@ -740,6 +782,7 @@ async function start() {
   });
 
   // 5) ループ開始
+  resizeCanvas(); // 初回のビューポート寸法を確定
   requestAnimationFrame(loop);
 }
 
