@@ -42,13 +42,18 @@ const H = 540; // WORLD_H
 
 // ---- カメラ（各端末ローカル・通信しない）。アバターを追従しズームしてスクロール表示 ----
 const MOBILE = matchMedia("(pointer: coarse)").matches || window.innerWidth < 700;
-const camera = { x: W / 2, y: H / 2, zoom: MOBILE ? 1.6 : 1.1 }; // 端末別の既定ズーム（ピンチ/ホイールで調整可）
+// ワールドが画面を覆う最小ズーム（これ未満だと黒余白が出る＝全画面表示の下限）
+function fitZoom() {
+  return Math.max(window.innerWidth / W, window.innerHeight / H);
+}
+const camera = { x: W / 2, y: H / 2, zoom: fitZoom() }; // 既定は全画面フィット。ピンチ/ホイールで拡大可
 let dpr = 1;
 function resizeCanvas() {
   const rect = canvas.getBoundingClientRect();
   dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = Math.max(1, Math.round(rect.width * dpr));
   canvas.height = Math.max(1, Math.round(rect.height * dpr));
+  setZoom(camera.zoom); // 画面サイズ変化に合わせて最小ズーム（全画面）を再適用
 }
 // 表示サイズの変化（回転/リサイズ/タイル増減）に追従
 new ResizeObserver(resizeCanvas).observe(canvas);
@@ -67,7 +72,7 @@ function updateCamera() {
 
 // ---- 手動ズーム（PC=ホイール / スマホ=ピンチ）----
 function setZoom(z) {
-  camera.zoom = Math.max(0.6, Math.min(4, z));
+  camera.zoom = Math.max(fitZoom(), Math.min(4, z)); // 下限＝全画面フィット
 }
 canvas.addEventListener(
   "wheel",
@@ -172,12 +177,19 @@ camera.y = me.y;
 const others = {}; // id -> {x, y, name, color, announcing?, summon?}
 let announcing = false; // 全体アナウンス中か（自分）
 let lastSummonTs = Date.now(); // 自分が処理済みの最新の集合ts（join前の古い集合は無視）
+let media = null; // MediaController（カメラ/マイク/背景/画面共有）
 
 document.getElementById("room-label").textContent = `room: ${ROOM}`;
 
 // ---- 映像タイル ----
 const videosEl = document.getElementById("videos");
 const videoTiles = new Map(); // id -> wrapper element
+
+// 画面共有の大画面表示
+const shareStage = document.getElementById("share-stage");
+const shareVideo = document.getElementById("share-video");
+const shareLabel = document.getElementById("share-label");
+let currentShareId = null;
 
 // モバイルの自動再生対策：再生を試み、ブロックされたら次のユーザー操作で再試行
 const pendingPlays = new Set();
@@ -240,30 +252,58 @@ function removeVideo(peerId) {
 function setupControls(media) {
   const camBtn = document.getElementById("btn-cam");
   const micBtn = document.getElementById("btn-mic");
+  const screenBtn = document.getElementById("btn-screen");
+  const bgBtn = document.getElementById("btn-bg");
+  const annBtn = document.getElementById("btn-announce");
+  const summonBtn = document.getElementById("btn-summon");
+
+  const bgPopover = document.getElementById("bg-popover");
+  const summonPanel = document.getElementById("summon-panel");
+  const summonList = document.getElementById("summon-list");
+
   const bgMode = document.getElementById("bg-mode");
   const blurRange = document.getElementById("blur-range");
+  const blurRow = document.getElementById("blur-row");
   const bgImageBtn = document.getElementById("btn-bg-image");
   const bgFile = document.getElementById("bg-file");
   const bgNote = document.getElementById("bg-note");
 
+  const setIcon = (btn, cls) => {
+    const i = btn.querySelector("i");
+    if (i) i.className = "ti " + cls;
+  };
+  const closePopovers = () => {
+    bgPopover.hidden = true;
+    summonPanel.hidden = true;
+  };
+
   function syncCamUI() {
     const on = media.cameraOn;
-    camBtn.textContent = on ? "🎥 カメラ ON" : "🚫 カメラ OFF";
+    setIcon(camBtn, on ? "ti-video" : "ti-video-off");
     camBtn.classList.toggle("off", !on);
-    camBtn.setAttribute("aria-pressed", String(on));
-    // 自分タイルはカメラON時のみ鏡像（OFF/画面共有中はプレースホルダ/画面を正しく表示）
+    camBtn.setAttribute("aria-label", on ? "カメラ オン" : "カメラ オフ");
+    // 自分タイルはカメラON時のみ鏡像（OFF/画面共有中はそのまま表示）
     const myTile = videoTiles.get("__me__");
     if (myTile) myTile.classList.toggle("mirror", on && !media.screenOn);
   }
   function syncMicUI() {
     const on = media.micOn;
-    micBtn.textContent = on ? "🎤 マイク ON" : "🔇 マイク OFF";
+    setIcon(micBtn, on ? "ti-microphone" : "ti-microphone-off");
     micBtn.classList.toggle("off", !on);
-    micBtn.setAttribute("aria-pressed", String(on));
+    micBtn.setAttribute("aria-label", on ? "マイク オン" : "マイク オフ");
+  }
+  function syncScreenUI() {
+    const on = media.screenOn;
+    screenBtn.classList.toggle("active", on);
+    screenBtn.setAttribute("aria-label", on ? "画面共有 中（停止）" : "画面共有");
+    const myTile = videoTiles.get("__me__");
+    if (myTile) myTile.classList.toggle("mirror", media.cameraOn && !on);
+    if (meRef) update(meRef, { sharing: on }); // 全員に共有状態を知らせる
   }
   function syncBgUI() {
-    blurRange.style.display = bgMode.value === "blur" ? "" : "none";
+    blurRow.style.display = bgMode.value === "blur" ? "" : "none";
     bgImageBtn.style.display = bgMode.value === "image" ? "" : "none";
+    bgBtn.classList.toggle("active", bgMode.value !== "none");
   }
 
   camBtn.addEventListener("click", () => {
@@ -275,21 +315,48 @@ function setupControls(media) {
     syncMicUI();
   });
 
+  // --- 画面共有 ---
+  media.onScreenEnd = syncScreenUI; // ブラウザ側「共有を停止」にも追従
+  screenBtn.addEventListener("click", async () => {
+    if (media.screenOn) {
+      media.stopScreenShare();
+    } else {
+      const r = await media.startScreenShare();
+      if (r && r.error) {
+        toast("画面共有を開始できませんでした");
+        return;
+      }
+    }
+    syncScreenUI();
+  });
+
+  // --- 全体アナウンス ---
+  annBtn.addEventListener("click", () => {
+    announcing = !announcing;
+    annBtn.classList.toggle("active", announcing);
+    if (meRef) update(meRef, { announcing });
+    toast(announcing ? "全体アナウンスを開始（全員に配信）" : "アナウンスを終了しました");
+  });
+
+  // --- 背景（ポップオーバー）---
+  bgBtn.addEventListener("click", () => {
+    const show = bgPopover.hidden;
+    closePopovers();
+    bgPopover.hidden = !show;
+  });
   bgMode.addEventListener("change", async () => {
     const want = bgMode.value;
     bgNote.textContent = want === "none" ? "" : "背景処理を準備中…";
     const res = await media.setBackground(want);
     if (res.error === "segmentation_unavailable") {
       bgMode.value = "none";
-      bgNote.textContent = "⚠ 背景処理を読み込めませんでした（ネット環境/対応ブラウザをご確認ください）";
+      bgNote.textContent = "⚠ 背景処理を読み込めませんでした";
     } else {
       bgNote.textContent = "";
     }
     syncBgUI();
   });
-
   blurRange.addEventListener("input", () => media.setBlurAmount(blurRange.value));
-
   bgImageBtn.addEventListener("click", () => bgFile.click());
   bgFile.addEventListener("change", () => {
     const file = bgFile.files && bgFile.files[0];
@@ -310,54 +377,18 @@ function setupControls(media) {
     img.src = URL.createObjectURL(file);
   });
 
-  // --- 画面共有 ---
-  const screenBtn = document.getElementById("btn-screen");
-  function syncScreenUI() {
-    const on = media.screenOn;
-    screenBtn.classList.toggle("active", on);
-    screenBtn.textContent = on ? "🖥️ 共有中（停止）" : "🖥️ 画面共有";
-    const myTile = videoTiles.get("__me__");
-    if (myTile) myTile.classList.toggle("mirror", media.cameraOn && !on);
-  }
-  media.onScreenEnd = syncScreenUI; // ブラウザ側「共有を停止」にも追従
-  screenBtn.addEventListener("click", async () => {
-    if (media.screenOn) {
-      media.stopScreenShare();
-    } else {
-      const r = await media.startScreenShare();
-      if (r && r.error) {
-        toast("画面共有を開始できませんでした");
-        return;
-      }
-    }
-    syncScreenUI();
-  });
-
-  // --- 全体アナウンス ---
-  const annBtn = document.getElementById("btn-announce");
-  annBtn.addEventListener("click", () => {
-    announcing = !announcing;
-    annBtn.classList.toggle("active", announcing);
-    annBtn.textContent = announcing ? "📢 アナウンス中（停止）" : "📢 アナウンス";
-    if (meRef) update(meRef, { announcing });
-    toast(announcing ? "📢 全体アナウンスを開始（全員に配信）" : "アナウンスを終了しました");
-  });
-
-  // --- 集合（特定の人を呼ぶ）---
-  const summonBtn = document.getElementById("btn-summon");
-  const panel = document.getElementById("summon-panel");
-  const listEl = document.getElementById("summon-list");
+  // --- 集合（特定の人を呼ぶ・ポップオーバー）---
   summonBtn.addEventListener("click", () => {
-    if (!panel.hidden) {
-      panel.hidden = true;
-      return;
+    const show = summonPanel.hidden;
+    closePopovers();
+    if (show) {
+      renderSummonList(summonList);
+      summonPanel.hidden = false;
     }
-    renderSummonList(listEl);
-    panel.hidden = false;
   });
-  document.getElementById("summon-cancel").addEventListener("click", () => (panel.hidden = true));
+  document.getElementById("summon-cancel").addEventListener("click", () => (summonPanel.hidden = true));
   document.getElementById("summon-go").addEventListener("click", () => {
-    const targets = [...listEl.querySelectorAll("input:checked")].map((i) => i.value);
+    const targets = [...summonList.querySelectorAll("input:checked")].map((i) => i.value);
     if (!targets.length) {
       toast("集合させる人を選んでください");
       return;
@@ -367,12 +398,13 @@ function setupControls(media) {
         summon: { targets, x: Math.round(me.x), y: Math.round(me.y), ts: Date.now() },
       });
     }
-    panel.hidden = true;
-    toast(`📍 ${targets.length}人を自分の場所に集合させました`);
+    summonPanel.hidden = true;
+    toast(`${targets.length}人を自分の場所に集合させました`);
   });
 
   syncCamUI();
   syncMicUI();
+  syncScreenUI();
   syncBgUI();
 }
 
@@ -387,6 +419,7 @@ function initPresence() {
     name: me.name,
     color: me.color,
     announcing: false,
+    sharing: false,
     ts: Date.now(),
   });
 
@@ -767,12 +800,59 @@ function render() {
   ctx.setTransform(1, 0, 0, 1, 0, 0); // 後始末
 }
 
+// 誰かが画面共有していたら、その映像を中央に大きく表示する
+function updateShareStage() {
+  let sharerId = null;
+  let stream = null;
+  let name = null;
+  if (media && media.screenOn) {
+    sharerId = "__me__";
+    stream = media.outputStream;
+    name = "あなた";
+  } else {
+    for (const id in others) {
+      if (others[id] && others[id].sharing) {
+        const tile = videoTiles.get(id);
+        const v = tile && tile.querySelector("video");
+        if (v && v.srcObject) {
+          sharerId = id;
+          stream = v.srcObject;
+          name = others[id].name || "誰か";
+          break;
+        }
+      }
+    }
+  }
+
+  // 共有中タイルの枠ハイライト
+  videoTiles.forEach((tile, id) => {
+    const sharing =
+      (id === "__me__" && media && media.screenOn) || (others[id] && others[id].sharing);
+    tile.classList.toggle("sharing", !!sharing);
+  });
+
+  if (sharerId && stream) {
+    if (currentShareId !== sharerId || shareVideo.srcObject !== stream) {
+      shareVideo.srcObject = stream;
+      tryPlay(shareVideo);
+      currentShareId = sharerId;
+    }
+    shareLabel.textContent = `${name} が画面共有中`;
+    shareStage.hidden = false;
+  } else if (!shareStage.hidden) {
+    shareStage.hidden = true;
+    shareVideo.srcObject = null;
+    currentShareId = null;
+  }
+}
+
 function loop(now) {
   step();
   flushPosition(now || 0);
   updateConnections();
   updateSpatialAudio();
   updateBanner();
+  updateShareStage();
   updateCamera();
   render();
   requestAnimationFrame(loop);
@@ -800,7 +880,7 @@ async function start() {
   initPresence();
 
   // 3) メディア（カメラ/マイク/背景効果）を起動。送出ストリーム＝加工後の映像＋マイク
-  const media = new MediaController();
+  media = new MediaController();
   const stream = await media.init();
   if (!media.hasCamera) {
     document.getElementById("status").textContent = "カメラ無し（音声/移動のみ）";

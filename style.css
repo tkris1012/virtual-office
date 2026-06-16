@@ -1,243 +1,272 @@
 * { box-sizing: border-box; }
 
 :root {
-  --bg: #161922;
-  --panel: #1f2433;
+  --panel: rgba(12, 16, 26, 0.78);
+  --panel-border: rgba(255, 255, 255, 0.16);
   --accent: #3498db;
   --text: #e8ecf4;
 }
 
 html, body {
   margin: 0;
-  height: 100%;
-  background: var(--bg);
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: #11131a;
   color: var(--text);
   font-family: system-ui, "Segoe UI", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
 }
-/* ページ全体を縦フレックスにして #map が残り領域を埋める（カメラのビューポート） */
-body {
+
+/* ---- 全画面マップ ---- */
+#map {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
   height: 100dvh;
-  display: flex;
-  flex-direction: column;
+  display: block;
+  background: #11131a;
+  touch-action: none; /* ピンチを自前処理 */
+  z-index: 0;
 }
 
-#topbar {
+/* ---- 左上: ルーム/在席ピル ---- */
+#roompill {
+  position: fixed;
+  left: 12px;
+  top: 12px;
+  z-index: 20;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 10px 16px;
-  background: var(--panel);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-#topbar .logo { font-weight: 700; }
-#room-label { color: #9aa4b8; font-size: 14px; }
-#status { margin-left: auto; color: #9aa4b8; font-size: 14px; }
-
-/* メディア操作バー */
-#controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
-  background: var(--panel);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-.ctrl {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 12px;
-  font-size: 14px;
-  color: var(--text);
-  background: #2a3145;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 8px;
-  cursor: pointer;
-}
-.ctrl:hover { background: #333c54; }
-/* OFF 状態のトグルは赤系で明示 */
-.ctrl.off {
-  background: #5a2230;
-  border-color: rgba(255, 120, 140, 0.5);
-}
-.ctrl-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
+  gap: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
   color: #cdd6ea;
-}
-#controls select {
-  padding: 6px 8px;
-  color: var(--text);
-  background: #2a3145;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 8px;
-}
-#controls input[type="range"] { width: 120px; accent-color: var(--accent); }
-#bg-note { font-size: 12px; color: #9aa4b8; }
-
-/* 機能ボタンの区切り */
-.ctrl-sep {
-  width: 1px;
-  height: 22px;
-  background: rgba(255, 255, 255, 0.15);
-  margin: 0 2px;
-}
-/* 有効中のトグル（画面共有中・アナウンス中）は緑系で明示 */
-.ctrl.active {
-  background: #1f6f43;
-  border-color: rgba(46, 204, 113, 0.6);
-}
-
-/* アナウンス中バナー */
-#banner {
-  padding: 8px 16px;
-  background: linear-gradient(90deg, #b8860b, #8a6d1a);
-  color: #fff;
-  font-weight: 700;
-  text-align: center;
-}
-
-/* 集合パネル */
-#summon-panel {
-  position: fixed;
-  right: 16px;
-  top: 110px;
-  width: 240px;
-  max-height: 60vh;
-  overflow: auto;
   background: var(--panel);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  padding: 12px;
-  z-index: 60;
+  border: 0.5px solid var(--panel-border);
+  border-radius: 999px;
 }
-#summon-panel .sp-head { font-size: 13px; color: #cdd6ea; margin-bottom: 8px; }
-#summon-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
-#summon-list label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  padding: 4px 6px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-#summon-list label:hover { background: #2a3145; }
-#summon-list .empty { color: #9aa4b8; font-size: 13px; }
-.sp-actions { display: flex; gap: 8px; }
+#roompill .ti { font-size: 16px; color: #9fb0d0; }
+#room-label { color: #9aa4b8; }
 
-/* トースト通知 */
-#toasts {
-  position: fixed;
-  left: 50%;
-  bottom: 24px;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  z-index: 70;
-  pointer-events: none;
-}
-.toast {
-  background: rgba(20, 24, 36, 0.95);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 10px;
-  padding: 10px 16px;
-  font-size: 14px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
-}
-
-main {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 12px;
-}
-
-/* 映像タイル一覧 */
+/* ---- 上部中央: カメラ映像 ---- */
 #videos {
-  flex: 0 0 auto;
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
   display: flex;
   gap: 8px;
+  max-width: 78vw;
   overflow-x: auto;
+  padding-bottom: 2px;
 }
 .tile {
   position: relative;
   flex: 0 0 auto;
-  width: 180px;
-  height: 135px;
-  background: #000;
+  width: 132px;
+  height: 99px;
+  background: #0e1320;
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 0.5px solid rgba(255, 255, 255, 0.18);
 }
 .tile video {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-/* 自分の映像だけ鏡像（セルフィー表示）。相手の映像は反転しない。
-   カメラオフ時はプレースホルダの文字が読めるよう反転を外す。 */
-.tile.local.mirror video {
-  transform: scaleX(-1);
-}
+.tile.local.mirror video { transform: scaleX(-1); } /* 自分だけ鏡像 */
+.tile.sharing { border-color: rgba(93, 202, 165, 0.85); } /* 共有中タイル */
 .tile .cap {
   position: absolute;
   left: 6px;
-  bottom: 6px;
-  padding: 2px 8px;
-  font-size: 12px;
-  background: rgba(0, 0, 0, 0.6);
+  bottom: 5px;
+  padding: 1px 7px;
+  font-size: 11px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
   border-radius: 6px;
+  max-width: 90%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-/* マップ */
-#stage {
-  flex: 1 1 auto;
-  min-height: 0;
-  width: 100%;
+/* ---- 画面共有の大画面表示 ---- */
+#share-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 16, 0.6);
+}
+#share-stage[hidden] { display: none; }
+#share-video {
+  max-width: 80vw;
+  max-height: 72vh;
+  border-radius: 12px;
+  border: 0.5px solid rgba(255, 255, 255, 0.22);
+  background: #000;
+}
+#share-label {
+  position: absolute;
+  top: calc(14vh - 4px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: #fff;
+  background: rgba(10, 14, 22, 0.8);
+  border-radius: 999px;
+}
+
+/* ---- アナウンス中バナー ---- */
+#banner {
+  position: fixed;
+  top: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  padding: 7px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: #b8860b;
+  border-radius: 999px;
+}
+#banner[hidden] { display: none; }
+
+/* ---- 下中央: アイコン操作バー ---- */
+#controls {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border: 0.5px solid var(--panel-border);
+  border-radius: 999px;
+}
+.ctrl {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.ctrl .ti { font-size: 21px; }
+.ctrl:hover { background: rgba(255, 255, 255, 0.24); }
+.ctrl.off { background: #a3302d; }      /* カメラ/マイク オフ */
+.ctrl.off:hover { background: #c23a36; }
+.ctrl.active { background: #1f6f43; }    /* 画面共有/アナウンス 有効中 */
+.ctrl.active:hover { background: #268a53; }
+
+/* ---- ポップオーバー（背景 / 集合）---- */
+.popover {
+  position: fixed;
+  left: 50%;
+  bottom: 78px;
+  transform: translateX(-50%);
+  z-index: 35;
+  width: 250px;
+  max-height: 56vh;
+  overflow: auto;
+  padding: 14px;
+  background: var(--panel);
+  border: 0.5px solid var(--panel-border);
+  border-radius: 14px;
+}
+.popover[hidden] { display: none; }
+.pop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: #cdd6ea;
+  margin-bottom: 10px;
+}
+.popover select,
+.ctrl-text {
+  padding: 7px 12px;
+  font-size: 14px;
+  color: var(--text);
+  background: #2a3145;
+  border: 0.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.popover input[type="range"] { width: 130px; accent-color: var(--accent); }
+#btn-bg-image { width: 100%; margin-bottom: 8px; }
+#bg-note { font-size: 12px; color: #9aa4b8; display: block; }
+
+/* 集合パネル */
+.sp-head { font-size: 13px; color: #cdd6ea; margin-bottom: 10px; }
+#summon-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+#summon-list label {
+  display: flex;
   align-items: center;
   gap: 8px;
+  font-size: 14px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  cursor: pointer;
 }
-#map {
-  flex: 1 1 auto;
-  min-height: 0;
-  width: 100%;
-  max-width: 1280px; /* PCで広がりすぎないように上限 */
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
-  background: #11131a;
-  touch-action: none; /* スマホのピンチズームを自前で処理（ブラウザのズーム抑止） */
+#summon-list label:hover { background: rgba(255, 255, 255, 0.08); }
+#summon-list .empty { color: #9aa4b8; font-size: 13px; }
+.sp-actions { display: flex; gap: 8px; }
+.sp-actions .ctrl-text { flex: 1; text-align: center; }
+
+/* ---- トースト ---- */
+#toasts {
+  position: fixed;
+  left: 50%;
+  bottom: 84px;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
 }
-#hint {
-  flex: 0 0 auto;
-  color: #9aa4b8;
-  font-size: 13px;
+.toast {
+  background: rgba(20, 24, 36, 0.95);
+  color: #fff;
+  border: 0.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 14px;
 }
 
-/* タッチ用バーチャルジョイスティック（タッチ端末のみ表示） */
+/* ---- スマホ用ジョイスティック（タッチ端末のみ）---- */
 #joystick {
   display: none;
   position: fixed;
-  left: 24px;
-  bottom: 24px;
+  left: 22px;
+  bottom: 96px;
   width: 120px;
   height: 120px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.08);
   border: 2px solid rgba(255, 255, 255, 0.25);
   touch-action: none;
-  z-index: 50;
+  z-index: 30;
 }
 #stick {
   position: absolute;
@@ -252,4 +281,12 @@ main {
 }
 @media (pointer: coarse) {
   #joystick { display: block; }
+}
+
+/* ---- 狭い画面の調整 ---- */
+@media (max-width: 600px) {
+  .tile { width: 104px; height: 78px; }
+  .ctrl { width: 42px; height: 42px; }
+  .ctrl .ti { font-size: 19px; }
+  #controls { gap: 7px; padding: 7px 10px; }
 }

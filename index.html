@@ -2,68 +2,75 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
   <title>Virtual Office — 近づくと話せる仮想オフィス</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.24.0/dist/tabler-icons.min.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header id="topbar">
-    <span class="logo">🏢 Virtual Office</span>
+  <!-- 全画面マップ -->
+  <canvas id="map" width="960" height="540"></canvas>
+
+  <!-- 左上: ルーム / 在席 -->
+  <div id="roompill">
+    <i class="ti ti-building-community" aria-hidden="true"></i>
     <span id="room-label"></span>
     <span id="status">接続中…</span>
-  </header>
+  </div>
 
-  <!-- メディア操作バー（カメラ/マイク/背景） -->
+  <!-- 上部中央: カメラ映像オーバーレイ -->
+  <section id="videos"></section>
+
+  <!-- 画面共有の大画面表示（共有中のみ） -->
+  <div id="share-stage" hidden>
+    <video id="share-video" autoplay playsinline muted></video>
+    <div id="share-label"></div>
+  </div>
+
+  <!-- アナウンス中バナー -->
+  <div id="banner" hidden></div>
+
+  <!-- 下中央: アイコン操作バー -->
   <div id="controls">
-    <button id="btn-cam" class="ctrl" type="button" aria-pressed="true">🎥 カメラ ON</button>
-    <button id="btn-mic" class="ctrl" type="button" aria-pressed="true">🎤 マイク ON</button>
-    <label class="ctrl-group">
-      背景
+    <button id="btn-cam" class="ctrl" type="button" aria-label="カメラ"><i class="ti ti-video" aria-hidden="true"></i></button>
+    <button id="btn-mic" class="ctrl" type="button" aria-label="マイク"><i class="ti ti-microphone" aria-hidden="true"></i></button>
+    <button id="btn-screen" class="ctrl" type="button" aria-label="画面共有"><i class="ti ti-screen-share" aria-hidden="true"></i></button>
+    <button id="btn-bg" class="ctrl" type="button" aria-label="背景"><i class="ti ti-wallpaper" aria-hidden="true"></i></button>
+    <button id="btn-announce" class="ctrl" type="button" aria-label="アナウンス"><i class="ti ti-speakerphone" aria-hidden="true"></i></button>
+    <button id="btn-summon" class="ctrl" type="button" aria-label="集合"><i class="ti ti-users" aria-hidden="true"></i></button>
+  </div>
+
+  <!-- 背景ポップオーバー -->
+  <div id="bg-popover" class="popover" hidden>
+    <label class="pop-row">背景
       <select id="bg-mode">
         <option value="none">なし</option>
         <option value="blur">ぼかし</option>
         <option value="image">バーチャル背景</option>
       </select>
     </label>
-    <input id="blur-range" type="range" min="2" max="20" value="8" title="ぼかしの強さ" />
-    <button id="btn-bg-image" class="ctrl" type="button">画像を選択</button>
+    <label class="pop-row" id="blur-row">ぼかし強さ
+      <input id="blur-range" type="range" min="2" max="20" value="8" />
+    </label>
+    <button id="btn-bg-image" class="ctrl-text" type="button">画像を選択</button>
     <input id="bg-file" type="file" accept="image/*" hidden />
     <span id="bg-note"></span>
-
-    <span class="ctrl-sep"></span>
-    <button id="btn-screen" class="ctrl" type="button">🖥️ 画面共有</button>
-    <button id="btn-announce" class="ctrl" type="button">📢 アナウンス</button>
-    <button id="btn-summon" class="ctrl" type="button">👥 集合</button>
   </div>
 
-  <!-- アナウンス中バナー -->
-  <div id="banner" hidden></div>
-
-  <!-- 集合パネル（オンライン一覧から選んで呼び出す） -->
-  <div id="summon-panel" hidden>
+  <!-- 集合パネル -->
+  <div id="summon-panel" class="popover" hidden>
     <div class="sp-head">ここに集合させる人を選択</div>
     <div id="summon-list"></div>
     <div class="sp-actions">
-      <button id="summon-go" class="ctrl" type="button">📍 ここに集合</button>
-      <button id="summon-cancel" class="ctrl" type="button">閉じる</button>
+      <button id="summon-go" class="ctrl-text" type="button">ここに集合</button>
+      <button id="summon-cancel" class="ctrl-text" type="button">閉じる</button>
     </div>
   </div>
 
   <!-- トースト通知 -->
   <div id="toasts"></div>
 
-  <main>
-    <!-- 通話映像のタイル一覧 -->
-    <section id="videos"></section>
-
-    <!-- マップ -->
-    <div id="stage">
-      <canvas id="map" width="640" height="960"></canvas>
-      <div id="hint">移動: 矢印キー / WASD（スマホは左下のスティック）｜ ズーム: ホイール / ピンチ ｜ 同じ部屋・青い円で通話</div>
-    </div>
-  </main>
-
-  <!-- タッチ端末用バーチャルジョイスティック（PCでは非表示） -->
+  <!-- スマホ用バーチャルジョイスティック -->
   <div id="joystick"><div id="stick"></div></div>
 
   <script type="module" src="main.js"></script>
