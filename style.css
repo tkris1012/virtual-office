@@ -212,11 +212,12 @@ main {
   flex: 1 1 auto;
   min-height: 0;
   width: 100%;
-  max-width: 1000px; /* PCで広がりすぎないように上限 */
+  max-width: 1280px; /* PCで広がりすぎないように上限 */
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
   background: #11131a;
+  touch-action: none; /* スマホのピンチズームを自前で処理（ブラウザのズーム抑止） */
 }
 #hint {
   flex: 0 0 auto;
