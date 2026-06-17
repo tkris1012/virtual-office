@@ -14,7 +14,11 @@ import { RTCManager, getIceServers, runIceTest } from "./rtc.js";
 import { MediaController } from "./media.js";
 
 // ---- 設定 ----
-const ROOM = new URLSearchParams(location.search).get("room") || "lobby";
+const params = new URLSearchParams(location.search);
+const urlRoom = params.get("room"); // 共有リンク経由の確定ルームキー
+const urlName = params.get("name");
+const ICETEST = params.has("icetest"); // 診断画面ではロビーを出さない
+let ROOM = null; // ロビーで確定（ルーム名＋合言葉から生成）
 const CALL_RADIUS = 120; // この距離以内で通話開始
 const HANGUP_RADIUS = 175; // この距離を超えたら切断（ヒステリシスでバタつき防止）
 const FULL_VOLUME_RADIUS = 45; // この距離以内なら最大音量（以遠は離れるほど小さく）
@@ -25,11 +29,7 @@ let myId = null; // 匿名認証の uid を起動時にセット
 let meRef = null;
 const rand4 = Math.random().toString(36).slice(2, 6);
 const defaultName = "user-" + rand4;
-const nameParam = new URLSearchParams(location.search).get("name");
-const ICETEST = new URLSearchParams(location.search).has("icetest"); // 診断画面では名前を聞かない
-const myName = (
-  nameParam || (ICETEST ? defaultName : prompt("名前を入力してください", defaultName)) || defaultName
-).slice(0, 16);
+let myName = null; // ロビーで確定
 const myColor = `hsl(${Math.floor(Math.random() * 360)}, 70%, 55%)`;
 
 const canvas = document.getElementById("map");
@@ -169,7 +169,7 @@ function zoneOf(p) {
 const me = {
   x: W * 0.45, // 中央の島デスクあたり
   y: H * 0.5,
-  name: myName,
+  name: "", // ロビー入室時に設定
   color: myColor,
 };
 camera.x = me.x; // 開始時のカメラを自分に合わせる（追従の初期ジャンプ防止）
@@ -178,8 +178,6 @@ const others = {}; // id -> {x, y, name, color, announcing?, summon?}
 let announcing = false; // 全体アナウンス中か（自分）
 let lastSummonTs = Date.now(); // 自分が処理済みの最新の集合ts（join前の古い集合は無視）
 let media = null; // MediaController（カメラ/マイク/背景/画面共有）
-
-document.getElementById("room-label").textContent = `room: ${ROOM}`;
 
 // ---- 映像タイル ----
 const videosEl = document.getElementById("videos");
@@ -936,8 +934,91 @@ async function runIceTestUI() {
     "\n\n（通常画面に戻るには URL の ?icetest を外して再読み込み）";
 }
 
-if (ICETEST) {
-  runIceTestUI();
-} else {
+// ---- ロビー（入室画面）----
+// ルーム名を RTDB キー用に整える
+function slugRoom(s) {
+  return (s || "").trim().toLowerCase().replace(/[.#$\[\]/\s]+/g, "-").slice(0, 40) || "lobby";
+}
+// 合言葉を短いハッシュにして部屋キーに畳み込む（合言葉が違えば別の部屋になる）
+async function shortHash(s) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].slice(0, 5).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function enter(roomKey, name, label) {
+  ROOM = roomKey;
+  myName = name;
+  me.name = name;
+  document.getElementById("room-label").textContent = label || roomKey;
   start();
+}
+
+function setupLobby() {
+  const lobby = document.getElementById("lobby");
+  const nameInput = document.getElementById("lobby-name");
+  const roomInput = document.getElementById("lobby-room");
+  const passInput = document.getElementById("lobby-pass");
+  const passRow = document.getElementById("pass-row");
+  const presets = document.querySelector(".preset-rooms");
+
+  nameInput.value = (urlName || defaultName).slice(0, 16);
+
+  // 共有リンク経由（部屋キー確定済み）: 名前だけ入れて入室
+  if (urlRoom) {
+    roomInput.value = urlRoom.replace(/-[0-9a-f]{10}$/, "");
+    roomInput.disabled = true;
+    if (passRow) passRow.style.display = "none";
+    if (presets) presets.style.display = "none";
+  } else {
+    presets.querySelectorAll("[data-room]").forEach((b) =>
+      b.addEventListener("click", () => (roomInput.value = b.dataset.room))
+    );
+    const tempBtn = document.getElementById("temp-room");
+    if (tempBtn)
+      tempBtn.addEventListener(
+        "click",
+        () => (roomInput.value = "temp-" + Math.random().toString(36).slice(2, 8))
+      );
+  }
+
+  async function doEnter() {
+    const name = (nameInput.value || defaultName).slice(0, 16);
+    let roomKey, label;
+    if (urlRoom) {
+      roomKey = urlRoom;
+      label = roomInput.value;
+    } else {
+      const roomName = slugRoom(roomInput.value);
+      label = roomInput.value.trim() || roomName;
+      const pass = passInput.value.trim();
+      roomKey = pass ? `${roomName}-${await shortHash(roomName + ":" + pass)}` : roomName;
+      history.replaceState(null, "", `?room=${encodeURIComponent(roomKey)}`);
+    }
+    lobby.hidden = true;
+    enter(roomKey, name, label);
+  }
+
+  document.getElementById("lobby-enter").addEventListener("click", doEnter);
+  [nameInput, roomInput, passInput].forEach((el) =>
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") doEnter();
+    })
+  );
+  nameInput.focus();
+}
+
+// ---- 起動の振り分け ----
+if (ICETEST) {
+  document.getElementById("lobby").hidden = true;
+  ROOM = urlRoom || "lobby";
+  myName = defaultName;
+  me.name = myName;
+  document.getElementById("room-label").textContent = ROOM;
+  runIceTestUI();
+} else if (urlRoom && urlName) {
+  // 完全修飾リンク（部屋＋名前）→ ロビーを飛ばして直接入室
+  document.getElementById("lobby").hidden = true;
+  enter(urlRoom, urlName.slice(0, 16), urlRoom.replace(/-[0-9a-f]{10}$/, ""));
+} else {
+  setupLobby();
 }

@@ -283,6 +283,81 @@ html, body {
   #joystick { display: block; }
 }
 
+/* ---- 入室ロビー ---- */
+#lobby {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: #11131a;
+}
+#lobby[hidden] { display: none; }
+.lobby-card {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  background: var(--panel);
+  border: 0.5px solid var(--panel-border);
+  border-radius: 16px;
+}
+.lobby-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 20px;
+  font-weight: 700;
+}
+.lobby-logo .ti { font-size: 22px; color: #9fb0d0; }
+.lobby-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #cdd6ea;
+}
+.lobby-row input {
+  padding: 10px 12px;
+  font-size: 15px;
+  color: var(--text);
+  background: #2a3145;
+  border: 0.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+}
+.lobby-row input:disabled { opacity: 0.6; }
+.preset-rooms { display: flex; flex-wrap: wrap; gap: 6px; }
+.preset-rooms button {
+  flex: 1;
+  min-width: 70px;
+  padding: 8px;
+  font-size: 13px;
+  color: var(--text);
+  background: #232a3c;
+  border: 0.5px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.preset-rooms button:hover { background: #2c3550; }
+.lobby-enter {
+  margin-top: 4px;
+  padding: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.lobby-enter:hover { background: #2d83c4; }
+.lobby-note { margin: 0; font-size: 12px; color: #9aa4b8; text-align: center; }
+
 /* ---- 狭い画面の調整 ---- */
 @media (max-width: 600px) {
   .tile { width: 104px; height: 78px; }
