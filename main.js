@@ -971,7 +971,10 @@ function setupLobby() {
     if (presets) presets.style.display = "none";
   } else {
     presets.querySelectorAll("[data-room]").forEach((b) =>
-      b.addEventListener("click", () => (roomInput.value = b.dataset.room))
+      b.addEventListener("click", () => {
+        roomInput.value = b.dataset.room;
+        if (b.dataset.pass) passInput.value = b.dataset.pass;
+      })
     );
     const tempBtn = document.getElementById("temp-room");
     if (tempBtn)
