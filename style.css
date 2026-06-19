@@ -356,6 +356,9 @@ html, body {
   cursor: pointer;
 }
 .lobby-enter:hover { background: #2d83c4; }
+.lobby-enter:disabled { opacity: 0.6; cursor: default; }
+.lobby-error { margin: 0; font-size: 13px; color: #ff9aa9; }
+.lobby-error[hidden] { display: none; }
 .lobby-note { margin: 0; font-size: 12px; color: #9aa4b8; text-align: center; }
 
 /* ---- 狭い画面の調整 ---- */

@@ -4,10 +4,12 @@
 import { db, auth } from "./firebase-config.js";
 import {
   ref,
+  get,
   set,
   update,
   onValue,
   onDisconnect,
+  remove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 import { signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { RTCManager, getIceServers, runIceTest } from "./rtc.js";
@@ -19,9 +21,11 @@ const urlRoom = params.get("room"); // 共有リンク経由の確定ルーム�
 const urlName = params.get("name");
 const ICETEST = params.has("icetest"); // 診断画面ではロビーを出さない
 let ROOM = null; // ロビーで確定（ルーム名＋合言葉から生成）
-const CALL_RADIUS = 120; // この距離以内で通話開始
-const HANGUP_RADIUS = 175; // この距離を超えたら切断（ヒステリシスでバタつき防止）
-const FULL_VOLUME_RADIUS = 45; // この距離以内なら最大音量（以遠は離れるほど小さく）
+// 近接通話（屋外）の範囲。従来比 約1/4 = より近づかないと通話が始まらない。
+// ※会議室などゾーン通話(ZONES)はこの半径に影響されない。
+const CALL_RADIUS = 30; // この距離以内で通話開始（旧120）
+const HANGUP_RADIUS = 48; // この距離を超えたら切断（ヒステリシスでバタつき防止・旧175）
+const FULL_VOLUME_RADIUS = 12; // この距離以内なら最大音量（以遠は離れるほど小さく・旧45）
 const SPEED = 3.2;
 
 // ---- 自分 ----
@@ -178,6 +182,8 @@ const others = {}; // id -> {x, y, name, color, announcing?, summon?}
 let announcing = false; // 全体アナウンス中か（自分）
 let lastSummonTs = Date.now(); // 自分が処理済みの最新の集合ts（join前の古い集合は無視）
 let media = null; // MediaController（カメラ/マイク/背景/画面共有）
+let currentRoomName = ""; // 入室中ルームの表示名（招待リンク生成に使う）
+let currentPassphrase = ""; // 入室中ルームの合言葉（招待リンクに埋め込む）
 
 // ---- 映像タイル ----
 const videosEl = document.getElementById("videos");
@@ -858,10 +864,9 @@ function loop(now) {
 
 // ---- 起動 ----
 async function start() {
-  // 1) 匿名サインイン（uid を自分のIDに使う）
+  // 1) 匿名サインイン（uid を自分のIDに使う。入室時に解決済みなら即返る）
   try {
-    const cred = await signInAnonymously(auth);
-    myId = cred.user.uid;
+    await ensureSignedIn();
   } catch (e) {
     console.error("匿名サインイン失敗:", e);
     document.getElementById("status").textContent =
@@ -935,14 +940,58 @@ async function runIceTestUI() {
 }
 
 // ---- ロビー（入室画面）----
-// ルーム名を RTDB キー用に整える
+// ルーム名を RTDB キー用に整える（ルームは名前のみで識別。合言葉は別途 meta で照合）
 function slugRoom(s) {
   return (s || "").trim().toLowerCase().replace(/[.#$\[\]/\s]+/g, "-").slice(0, 40) || "lobby";
 }
-// 合言葉を短いハッシュにして部屋キーに畳み込む（合言葉が違えば別の部屋になる）
-async function shortHash(s) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
-  return [...new Uint8Array(buf)].slice(0, 5).map((b) => b.toString(16).padStart(2, "0")).join("");
+// 招待リンクの #k= から合言葉を取得
+function passFromHash() {
+  return new URLSearchParams(location.hash.replace(/^#/, "")).get("k") || "";
+}
+
+async function ensureSignedIn() {
+  if (myId) return myId;
+  const cred = await signInAnonymously(auth);
+  myId = cred.user.uid;
+  return myId;
+}
+
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// 合言葉を rooms/{roomKey}/meta で照合する。
+//  - 新規ルーム: 最初の入室者が作成者となり合言葉(ハッシュ)を確定。
+//  - 既存ルーム(合言葉あり): ハッシュ不一致なら wrong_pass を投げる＝入れない。
+//  - 既存ルーム(合言葉なし=オープン): そのまま入室可。
+async function validateAndEnter({ roomName, pass }) {
+  const roomKey = slugRoom(roomName);
+  await ensureSignedIn();
+  const metaRef = ref(db, `rooms/${roomKey}/meta`);
+  const passHash = pass ? await sha256Hex(pass) : "";
+  const snap = await get(metaRef);
+  const wrongPass = () => {
+    const e = new Error("wrong_pass");
+    e.code = "wrong_pass";
+    return e;
+  };
+  let isCreator = false;
+  if (!snap.exists()) {
+    try {
+      await set(metaRef, { passHash, createdBy: myId, createdAt: Date.now() });
+      isCreator = true;
+    } catch (e) {
+      // ほぼ同時に他者が作成した場合 → 読み直して照合
+      const again = await get(metaRef);
+      const m = again.exists() ? again.val() : null;
+      if (m && m.passHash && m.passHash !== passHash) throw wrongPass();
+    }
+  } else {
+    const m = snap.val();
+    if (m.passHash && m.passHash !== passHash) throw wrongPass();
+  }
+  return { roomKey, isCreator };
 }
 
 function enter(roomKey, name, label) {
@@ -953,27 +1002,76 @@ function enter(roomKey, name, label) {
   start();
 }
 
+// ---- 招待リンク / 退出 ----
+function buildInviteLink() {
+  const slug = slugRoom(currentRoomName || ROOM || "");
+  let url = location.origin + location.pathname + "?room=" + encodeURIComponent(slug);
+  if (currentPassphrase) url += "#k=" + encodeURIComponent(currentPassphrase);
+  return url;
+}
+async function copyInvite() {
+  const link = buildInviteLink();
+  try {
+    await navigator.clipboard.writeText(link);
+    toast("招待リンクをコピーしました（合言葉入り・ワンクリック入室）");
+  } catch (e) {
+    window.prompt("招待リンク（コピーしてください）", link);
+  }
+}
+// 退出: 在席削除・全切断・メディア停止のうえ、クエリ/ハッシュを消してロビーへ戻す（完全リセット）
+async function leaveRoom() {
+  try {
+    if (meRef) await remove(meRef);
+  } catch (_) {}
+  try {
+    if (rtc) rtc.disconnectAll();
+  } catch (_) {}
+  try {
+    if (media) {
+      if (media.screenOn) media.stopScreenShare();
+      media.stop();
+    }
+  } catch (_) {}
+  location.href = location.origin + location.pathname;
+}
+function wireRoomButtons() {
+  const inviteBtn = document.getElementById("btn-invite");
+  const leaveBtn = document.getElementById("btn-leave");
+  if (inviteBtn) inviteBtn.addEventListener("click", copyInvite);
+  if (leaveBtn) leaveBtn.addEventListener("click", leaveRoom);
+}
+
 function setupLobby() {
   const lobby = document.getElementById("lobby");
   const nameInput = document.getElementById("lobby-name");
   const roomInput = document.getElementById("lobby-room");
   const passInput = document.getElementById("lobby-pass");
-  const passRow = document.getElementById("pass-row");
   const presets = document.querySelector(".preset-rooms");
+  const enterBtn = document.getElementById("lobby-enter");
+  const errEl = document.getElementById("lobby-error");
+
+  const showErr = (msg) => {
+    errEl.textContent = "⚠ " + msg;
+    errEl.hidden = false;
+    passInput.focus();
+    passInput.select && passInput.select();
+  };
+  const hideErr = () => (errEl.hidden = true);
 
   nameInput.value = (urlName || defaultName).slice(0, 16);
 
-  // 共有リンク経由（部屋キー確定済み）: 名前だけ入れて入室
+  // 招待リンク経由（?room=slug #k=合言葉）: ルームを固定し、合言葉を自動入力
   if (urlRoom) {
-    roomInput.value = urlRoom.replace(/-[0-9a-f]{10}$/, "");
+    roomInput.value = urlRoom;
     roomInput.disabled = true;
-    if (passRow) passRow.style.display = "none";
     if (presets) presets.style.display = "none";
+    const k = passFromHash();
+    if (k) passInput.value = k;
   } else {
     presets.querySelectorAll("[data-room]").forEach((b) =>
       b.addEventListener("click", () => {
         roomInput.value = b.dataset.room;
-        if (b.dataset.pass) passInput.value = b.dataset.pass;
+        passInput.value = b.dataset.pass || "";
       })
     );
     const tempBtn = document.getElementById("temp-room");
@@ -986,22 +1084,39 @@ function setupLobby() {
 
   async function doEnter() {
     const name = (nameInput.value || defaultName).slice(0, 16);
-    let roomKey, label;
-    if (urlRoom) {
-      roomKey = urlRoom;
-      label = roomInput.value;
-    } else {
-      const roomName = slugRoom(roomInput.value);
-      label = roomInput.value.trim() || roomName;
-      const pass = passInput.value.trim();
-      roomKey = pass ? `${roomName}-${await shortHash(roomName + ":" + pass)}` : roomName;
+    const roomName = (urlRoom || roomInput.value || "").trim();
+    const pass = passInput.value.trim();
+    hideErr();
+    if (!roomName) return showErr("ルーム名を入力してください");
+    enterBtn.disabled = true;
+    const orig = enterBtn.textContent;
+    enterBtn.textContent = "入室中…";
+    try {
+      const { roomKey, isCreator } = await validateAndEnter({ roomName, pass });
+      currentRoomName = roomName;
+      currentPassphrase = pass;
       history.replaceState(null, "", `?room=${encodeURIComponent(roomKey)}`);
+      lobby.hidden = true;
+      enter(roomKey, name, roomName);
+      if (isCreator) toast(`ルーム「${roomName}」を作成しました。🔗で招待リンクを共有できます`);
+    } catch (err) {
+      const code = (err && (err.code || err.message)) || String(err);
+      if (err && err.code === "wrong_pass") showErr("合言葉が違います");
+      else if (/auth\//i.test(code))
+        showErr("サインインに失敗しました。Firebaseで匿名ログインを有効化してください");
+      else if (/permission/i.test(code))
+        showErr("権限エラー：Realtime Database のルールを更新してください");
+      else {
+        console.error("入室失敗:", err);
+        showErr("入室に失敗しました（" + code + "）");
+      }
+    } finally {
+      enterBtn.disabled = false;
+      enterBtn.textContent = orig;
     }
-    lobby.hidden = true;
-    enter(roomKey, name, label);
   }
 
-  document.getElementById("lobby-enter").addEventListener("click", doEnter);
+  enterBtn.addEventListener("click", doEnter);
   [nameInput, roomInput, passInput].forEach((el) =>
     el.addEventListener("keydown", (e) => {
       if (e.key === "Enter") doEnter();
@@ -1018,10 +1133,7 @@ if (ICETEST) {
   me.name = myName;
   document.getElementById("room-label").textContent = ROOM;
   runIceTestUI();
-} else if (urlRoom && urlName) {
-  // 完全修飾リンク（部屋＋名前）→ ロビーを飛ばして直接入室
-  document.getElementById("lobby").hidden = true;
-  enter(urlRoom, urlName.slice(0, 16), urlRoom.replace(/-[0-9a-f]{10}$/, ""));
 } else {
+  wireRoomButtons();
   setupLobby();
 }

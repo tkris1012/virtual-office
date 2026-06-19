@@ -1,8 +1,11 @@
 {
-  "_comment": "本番向けルール: 匿名認証(auth)済みユーザーのみ。自分のアバターは自分だけが書き込み可。通話シグナリングは当事者のみ。",
   "rules": {
     "rooms": {
       "$room": {
+        "meta": {
+          ".read": "auth != null",
+          ".write": "auth != null && (!data.exists() || data.child('createdBy').val() === auth.uid)"
+        },
         "players": {
           ".read": "auth != null",
           "$uid": {
