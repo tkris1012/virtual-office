@@ -39,8 +39,8 @@ const STUN_SERVERS = [
 
 // 方法A: Metered 動的取得（使う場合のみ埋める）
 const METERED = {
-  subdomain: "", // 例: "myapp"
-  apiKey: "", // ダッシュボードの API Key
+  subdomain: "virtual-office", // 例: "myapp"
+  apiKey: "RDMiF--EKnAtHzGux3YEeCHW4b0OUlCycN47xujrK_L2Med5", // ダッシュボードの API Key
 };
 
 // 方法B: 静的TURN（使う場合のみ。複数可）
