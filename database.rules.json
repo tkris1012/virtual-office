@@ -1,5 +1,11 @@
 {
   "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
     "rooms": {
       "$room": {
         "meta": {
