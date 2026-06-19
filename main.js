@@ -1081,25 +1081,31 @@ function setupLobby() {
     const k = passFromHash();
     if (k) passInput.value = k;
   } else {
+    // NCM（公式ルーム）: ルーム名のみ固定(編集不可)。合言葉は空欄・編集可とし、
+    // 合言葉(ncm)を知っている人が自分で入力したときだけ入室できる。ボタンは「入室する」。
     presets.querySelectorAll("[data-room]").forEach((b) =>
       b.addEventListener("click", () => {
         roomInput.value = b.dataset.room;
-        // 固定ルーム(NCM)は「ルーム名のみ」編集不可。合言葉は常に空欄・編集可とし、
-        // 合言葉(ncm)を知っている人が自分で入力したときだけ入室できるようにする。
         roomInput.disabled = b.dataset.fixed === "1";
         passInput.disabled = false;
         passInput.value = "";
+        enterBtn.textContent = "入室する";
         hideErr();
         passInput.focus();
       })
     );
-    const tempBtn = document.getElementById("temp-room");
-    if (tempBtn)
-      tempBtn.addEventListener("click", () => {
+    // 新規ルーム作成: ルーム名・合言葉を空にして編集可。ボタンは「新規作成」。
+    // 好きなルーム名＋合言葉を入れて押すと、作成者として新規ルームを作る。
+    const createBtn = document.getElementById("create-room");
+    if (createBtn)
+      createBtn.addEventListener("click", () => {
         roomInput.disabled = false;
         passInput.disabled = false;
-        roomInput.value = "temp-" + Math.random().toString(36).slice(2, 8);
+        roomInput.value = "";
         passInput.value = "";
+        enterBtn.textContent = "新規作成";
+        hideErr();
+        roomInput.focus();
       });
   }
 
@@ -1111,7 +1117,7 @@ function setupLobby() {
     if (!roomName) return showErr("ルーム名を入力してください");
     enterBtn.disabled = true;
     const orig = enterBtn.textContent;
-    enterBtn.textContent = "入室中…";
+    enterBtn.textContent = orig === "新規作成" ? "作成中…" : "入室中…";
     try {
       const { roomKey, isCreator } = await validateAndEnter({ roomName, pass });
       currentRoomName = roomName;
