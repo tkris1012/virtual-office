@@ -949,6 +949,14 @@ function passFromHash() {
   return new URLSearchParams(location.hash.replace(/^#/, "")).get("k") || "";
 }
 
+// 固定（公式）ルーム: 合言葉をコード側で確定し、meta の「先着作成者」に依存しない。
+// （先着者に乗っ取られて作成者以外が直せなくなる事故を防ぐ）。
+// .preset-rooms の data-fixed ボタンから roomKey→合言葉 を取り込む。
+const FIXED_ROOMS = {};
+document.querySelectorAll('.preset-rooms [data-fixed="1"]').forEach((b) => {
+  FIXED_ROOMS[slugRoom(b.dataset.room)] = b.dataset.pass || "";
+});
+
 async function ensureSignedIn() {
   if (myId) return myId;
   const cred = await signInAnonymously(auth);
@@ -967,15 +975,20 @@ async function sha256Hex(text) {
 //  - 既存ルーム(合言葉なし=オープン): そのまま入室可。
 async function validateAndEnter({ roomName, pass }) {
   const roomKey = slugRoom(roomName);
-  await ensureSignedIn();
-  const metaRef = ref(db, `rooms/${roomKey}/meta`);
-  const passHash = pass ? await sha256Hex(pass) : "";
-  const snap = await get(metaRef);
   const wrongPass = () => {
     const e = new Error("wrong_pass");
     e.code = "wrong_pass";
     return e;
   };
+  // 固定ルーム(NCM等): 合言葉はコード側で確定。meta に依存せず照合する。
+  if (Object.prototype.hasOwnProperty.call(FIXED_ROOMS, roomKey)) {
+    if (pass !== FIXED_ROOMS[roomKey]) throw wrongPass();
+    return { roomKey, isCreator: false };
+  }
+  await ensureSignedIn();
+  const metaRef = ref(db, `rooms/${roomKey}/meta`);
+  const passHash = pass ? await sha256Hex(pass) : "";
+  const snap = await get(metaRef);
   let isCreator = false;
   if (!snap.exists()) {
     try {
@@ -1072,14 +1085,21 @@ function setupLobby() {
       b.addEventListener("click", () => {
         roomInput.value = b.dataset.room;
         passInput.value = b.dataset.pass || "";
+        // data-fixed のルーム(NCM)は名前・合言葉を固定して編集不可にする
+        const fixed = b.dataset.fixed === "1";
+        roomInput.disabled = fixed;
+        passInput.disabled = fixed;
+        hideErr();
       })
     );
     const tempBtn = document.getElementById("temp-room");
     if (tempBtn)
-      tempBtn.addEventListener(
-        "click",
-        () => (roomInput.value = "temp-" + Math.random().toString(36).slice(2, 8))
-      );
+      tempBtn.addEventListener("click", () => {
+        roomInput.disabled = false;
+        passInput.disabled = false;
+        roomInput.value = "temp-" + Math.random().toString(36).slice(2, 8);
+        passInput.value = "";
+      });
   }
 
   async function doEnter() {
