@@ -591,6 +591,31 @@ html, body {
 .crop-actions .ctrl-text { flex: 1; text-align: center; }
 .crop-ok { background: var(--accent); border-color: transparent; }
 
+/* ---- HUD 自動表示/非表示（0.2sフェード）---- */
+/* ツールバー・カメラ映像・ルームピルを無操作時/タップで隠す。
+   通話中(body.in-call)は #videos を隠さない。ジョイスティック・画面共有・
+   バナー・トーストは対象外（常に表示）。 */
+#controls,
+#videos,
+#roompill {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+body.hud-hidden #controls {
+  opacity: 0;
+  transform: translateX(-50%) translateY(12px);
+  pointer-events: none;
+}
+body.hud-hidden #roompill {
+  opacity: 0;
+  transform: translateY(-12px);
+  pointer-events: none;
+}
+body.hud-hidden:not(.in-call) #videos {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-12px);
+  pointer-events: none;
+}
+
 /* ---- 狭い画面の調整 ---- */
 @media (max-width: 600px) {
   .tile { width: 104px; height: 78px; }

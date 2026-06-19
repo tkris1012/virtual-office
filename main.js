@@ -570,6 +570,7 @@ function step() {
   }
 
   if (dx || dy) {
+    noteHudActivity(); // 移動操作で HUD を表示維持＆自動非表示タイマーをリセット
     // X/Y を別々に判定 → 壁沿いに滑れる
     const nx = me.x + dx * SPEED;
     if (canBeAt(nx, me.y)) {
@@ -920,13 +921,91 @@ function updateShareStage() {
   }
 }
 
+// ---- HUD 自動表示/非表示（無操作で隠す＋マップのタップ/クリックでトグル）----
+const HUD_AUTOHIDE_MS = 5000; // 無操作がこの時間続いたら自動非表示
+let hudVisible = true;
+let lastHudActivity = performance.now();
+let wasInCall = false;
+
+// ポップオーバー/コンソールを開いている間は自動非表示しない（操作中に消えないように）
+function isHudPaused() {
+  const bg = document.getElementById("bg-popover");
+  const sp = document.getElementById("summon-panel");
+  const cs = document.getElementById("console");
+  return (bg && !bg.hidden) || (sp && !sp.hidden) || (cs && !cs.hidden);
+}
+function showHud() {
+  hudVisible = true;
+  document.body.classList.remove("hud-hidden");
+  lastHudActivity = performance.now();
+}
+function hideHud() {
+  hudVisible = false;
+  document.body.classList.add("hud-hidden");
+}
+function toggleHud() {
+  if (hudVisible) hideHud();
+  else showHud();
+}
+// 移動などの操作で呼ぶ：表示を維持＆タイマーをリセット
+function noteHudActivity() {
+  lastHudActivity = performance.now();
+  if (!hudVisible) showHud();
+}
+function updateHud(now) {
+  // 通話中（誰かと接続中）は #videos を隠さない（body.in-call で制御）
+  let inCall = false;
+  if (rtc) {
+    for (const id in others) {
+      if (rtc.isConnected(id)) {
+        inCall = true;
+        break;
+      }
+    }
+  }
+  if (inCall !== wasInCall) {
+    document.body.classList.toggle("in-call", inCall);
+    wasInCall = inCall;
+  }
+  // 無操作が続いたら自動非表示
+  if (hudVisible && !isHudPaused() && now - lastHudActivity > HUD_AUTOHIDE_MS) {
+    hideHud();
+  }
+}
+
+// マップのシングルタップ/クリックで HUD をトグル（ドラッグ/ピンチでは発動しない）
+let hudTapStart = null;
+let hudActivePointers = 0;
+canvas.addEventListener("pointerdown", (e) => {
+  hudActivePointers++;
+  // 2本以上（ピンチ等）はタップ扱いにしない
+  hudTapStart =
+    hudActivePointers === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
+});
+function hudPointerEnd(e) {
+  hudActivePointers = Math.max(0, hudActivePointers - 1);
+  if (hudTapStart) {
+    const dist = Math.hypot(e.clientX - hudTapStart.x, e.clientY - hudTapStart.y);
+    const dt = performance.now() - hudTapStart.t;
+    if (dist < 10 && dt < 250) toggleHud(); // 移動<10px・250ms以内 のみトグル
+  }
+  hudTapStart = null;
+}
+canvas.addEventListener("pointerup", hudPointerEnd);
+canvas.addEventListener("pointercancel", () => {
+  hudActivePointers = Math.max(0, hudActivePointers - 1);
+  hudTapStart = null;
+});
+
 function loop(now) {
+  const t = now || performance.now();
   step();
-  flushPosition(now || 0);
+  flushPosition(t);
   updateConnections();
   updateSpatialAudio();
   updateBanner();
   updateShareStage();
+  updateHud(t);
   updateCamera();
   render();
   requestAnimationFrame(loop);
@@ -960,7 +1039,8 @@ async function start() {
     onClose: removeVideo,
   });
 
-  // 5) ループ開始
+  // 5) ループ開始（入室時点を起点に HUD 自動非表示タイマーをリセット）
+  showHud();
   resizeCanvas(); // 初回のビューポート寸法を確定
   requestAnimationFrame(loop);
 }
