@@ -1,7 +1,7 @@
 // =============================================================
 //  メイン: マップ描画 / 移動 / 位置同期(presence) / 近接判定
 // =============================================================
-import { db, auth, storage } from "./firebase-config.js";
+import { db, auth } from "./firebase-config.js";
 import {
   ref,
   get,
@@ -20,11 +20,6 @@ import {
   onAuthStateChanged,
   signOut,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import {
-  ref as sRef,
-  uploadBytes,
-  getDownloadURL,
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 import { RTCManager, getIceServers, runIceTest } from "./rtc.js";
 import { MediaController } from "./media.js";
 import { PRESET_ICONS, presetById, defaultPresetIdFor, EMOJI_FONT } from "./avatars.js";
@@ -1385,20 +1380,14 @@ function setupConsole() {
       const file = fileInput.files && fileInput.files[0];
       fileInput.value = ""; // 同じファイルを連続選択できるように
       if (!file) return;
-      const blob = await openCrop(file); // 円形クロップ
-      if (!blob) return;
-      note.textContent = "アップロード中…";
-      try {
-        const url = await uploadAvatar(blob);
-        me.iconType = "upload";
-        me.iconUrl = url;
-        getAvatarImage(url); // 先読み
-        renderConsolePreview();
-        note.textContent = "画像を設定しました";
-      } catch (e) {
-        console.error("アバターアップロード失敗:", e);
-        note.textContent = "⚠ アップロードに失敗しました（Storageの有効化が必要）";
-      }
+      // Storage(Blaze必須)は使わず、クロップ画像を小さく圧縮して data URL で保存する。
+      const dataUrl = await openCrop(file);
+      if (!dataUrl) return;
+      me.iconType = "upload";
+      me.iconUrl = dataUrl;
+      getAvatarImage(dataUrl); // 先読み
+      renderConsolePreview();
+      note.textContent = "画像を設定しました";
     });
 
   if (logoutBtn)
@@ -1410,17 +1399,13 @@ function setupConsole() {
     });
 }
 
-async function uploadAvatar(blob) {
-  const path = `avatars/${myId}/icon.png`;
-  const storageRef = sRef(storage, path);
-  await uploadBytes(storageRef, blob, { contentType: "image/png" });
-  return await getDownloadURL(storageRef);
-}
-
 // =============================================================
 //  円形クロップ（外部ライブラリ不要・Canvas で実装）
-//  返り値: 円形に切り抜いた PNG Blob（キャンセル時は null）
+//  Storage(有料) を使わず RTDB に収めるため、出力は小さめ JPEG の data URL。
+//  アバターは描画時に円形クリップするので JPEG の角は見えない。
+//  返り値: data URL 文字列（キャンセル時は null）
 // =============================================================
+const AVATAR_OUT = 192; // 出力解像度（px）。data URL を小さく保つ
 function openCrop(file) {
   return new Promise((resolve) => {
     const modal = document.getElementById("crop-modal");
@@ -1513,26 +1498,21 @@ function openCrop(file) {
         resolve(null);
       };
       const onConfirm = () => {
-        // 円形に切り抜いて出力（256x256 PNG・円外は透明）
+        // 選択範囲を AVATAR_OUT 角の JPEG に縮小して data URL 化（RTDBに収まるサイズに）。
+        // 角は描画時の円形クリップで隠れるため、背景を黒く塗ってから cover 配置する。
         const out = document.createElement("canvas");
-        out.width = VIEW;
-        out.height = VIEW;
+        out.width = AVATAR_OUT;
+        out.height = AVATAR_OUT;
         const octx = out.getContext("2d");
-        octx.save();
-        octx.beginPath();
-        octx.arc(VIEW / 2, VIEW / 2, VIEW / 2, 0, Math.PI * 2);
-        octx.clip();
-        const dw = img.naturalWidth * baseScale * zoom;
-        const dh = img.naturalHeight * baseScale * zoom;
-        octx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh);
-        octx.restore();
-        out.toBlob(
-          (blob) => {
-            cleanup();
-            resolve(blob);
-          },
-          "image/png"
-        );
+        const k = AVATAR_OUT / VIEW; // プレビュー座標 → 出力座標の倍率
+        octx.fillStyle = "#000";
+        octx.fillRect(0, 0, AVATAR_OUT, AVATAR_OUT);
+        const dw = img.naturalWidth * baseScale * zoom * k;
+        const dh = img.naturalHeight * baseScale * zoom * k;
+        octx.drawImage(img, cx * k - dw / 2, cy * k - dh / 2, dw, dh);
+        const dataUrl = out.toDataURL("image/jpeg", 0.85);
+        cleanup();
+        resolve(dataUrl);
       };
       cancelBtn.addEventListener("click", onCancel);
       confirmBtn.addEventListener("click", onConfirm);

@@ -62,22 +62,12 @@ virtual-office/
 さらに **Settings → 承認済みドメイン** に公開先ドメイン（例 `tkris1012.github.io`）を追加します。
 （このアプリは起動時にサインイン画面を表示し、その uid をアバターID・設定の保存キーに使います）
 
-### 3. Storage を有効化（アバター画像アップロード用）
+### 3. アバター画像について（Storage 不要・無料 Spark のまま）
 
-左メニュー **構築 → Storage** → **「始める」** で有効化（無料 5GB）。
-**Rules** タブに以下を貼ると、ログイン済みユーザーが自分のアバターだけを書き込めます:
-
-```
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /avatars/{uid}/{file=**} {
-      allow read: if true;                 // アバターは全員が表示できる
-      allow write: if request.auth != null && request.auth.uid == uid;
-    }
-  }
-}
-```
+Firebase Storage は現在 **Blaze（従量課金）プランでないと有効化できない**ため、このアプリでは
+**Storage を使いません**。アップロードした画像はクロップ時に小さな JPEG（192px・約10KB）へ圧縮し、
+**data URL 文字列として RTDB の `users/{uid}/iconUrl` に保存**します。無料の Spark プランのまま動きます。
+（プリセットアイコンだけ使う場合は画像保存も発生しません）
 
 ### 4. セキュリティルール
 
