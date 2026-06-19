@@ -1084,12 +1084,13 @@ function setupLobby() {
     presets.querySelectorAll("[data-room]").forEach((b) =>
       b.addEventListener("click", () => {
         roomInput.value = b.dataset.room;
-        passInput.value = b.dataset.pass || "";
-        // data-fixed のルーム(NCM)は名前・合言葉を固定して編集不可にする
-        const fixed = b.dataset.fixed === "1";
-        roomInput.disabled = fixed;
-        passInput.disabled = fixed;
+        // 固定ルーム(NCM)は「ルーム名のみ」編集不可。合言葉は常に空欄・編集可とし、
+        // 合言葉(ncm)を知っている人が自分で入力したときだけ入室できるようにする。
+        roomInput.disabled = b.dataset.fixed === "1";
+        passInput.disabled = false;
+        passInput.value = "";
         hideErr();
+        passInput.focus();
       })
     );
     const tempBtn = document.getElementById("temp-room");
