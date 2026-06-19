@@ -1211,6 +1211,24 @@ function profileRef(uid) {
   return ref(db, `users/${uid}`);
 }
 
+// 端末ローカルの控え。クラウド(RTDB)書き込みが失敗してもアバター/表示名を保持する。
+function localProfileKey(uid) {
+  return "vo_profile_" + uid;
+}
+function readLocalProfile(uid) {
+  try {
+    const raw = localStorage.getItem(localProfileKey(uid));
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
+function writeLocalProfile(uid, data) {
+  try {
+    localStorage.setItem(localProfileKey(uid), JSON.stringify(data));
+  } catch (_) {}
+}
+
 function applyProfileToMe(p) {
   if (!p) return;
   if (p.displayName) {
@@ -1222,34 +1240,48 @@ function applyProfileToMe(p) {
   me.iconUrl = p.iconUrl || "";
 }
 
-// サインイン直後に呼ぶ。無ければ既定プロフィールを作成して保存。
+// サインイン直後に呼ぶ。クラウドと端末の控えの「新しい方」を採用する。
 async function loadUserProfile(user) {
-  let profile = null;
+  let cloud = null;
+  let cloudReadOk = false;
   try {
     const snap = await get(profileRef(user.uid));
-    if (snap.exists()) profile = snap.val();
+    cloudReadOk = true;
+    if (snap.exists()) cloud = snap.val();
   } catch (e) {
     console.warn("プロフィール読込失敗:", e);
   }
+  const local = readLocalProfile(user.uid);
+
+  // 新しい方（updatedAt が大きい方）を採用。クラウド書き込み失敗で stale な場合に
+  // 端末の最新編集が勝つようにする。
+  let profile = null;
+  if (cloud && local) {
+    profile = (local.updatedAt || 0) > (cloud.updatedAt || 0) ? local : cloud;
+  } else {
+    profile = cloud || local || null;
+  }
+
   if (!profile) {
     profile = {
       displayName: (user.displayName || (user.email || "").split("@")[0] || defaultName).slice(0, 16),
       iconType: "preset",
       iconId: defaultPresetIdFor(user.uid),
       iconUrl: "",
+      updatedAt: Date.now(),
     };
-    try {
-      await set(profileRef(user.uid), profile);
-    } catch (e) {
-      console.warn("プロフィール作成失敗:", e);
-    }
   }
+  // 採用したものがクラウドより新しければクラウドへ復元（次回・他端末用）
+  if (cloudReadOk && profile !== cloud && (profile.updatedAt || 0) > ((cloud && cloud.updatedAt) || 0)) {
+    set(profileRef(user.uid), profile).catch((e) => console.warn("プロフィール復元失敗:", e));
+  }
+  writeLocalProfile(user.uid, profile);
   applyProfileToMe(profile);
-  // ロビー / コンソールの表示名欄へ反映
+  // ロビー / コンソールの表示名欄へ反映（入力中の欄は上書きしない）
   const lobbyName = document.getElementById("lobby-name");
   const consoleName = document.getElementById("console-name");
-  if (lobbyName && !urlName) lobbyName.value = me.name;
-  if (consoleName) consoleName.value = me.name;
+  if (lobbyName && !urlName && document.activeElement !== lobbyName) lobbyName.value = me.name;
+  if (consoleName && document.activeElement !== consoleName) consoleName.value = me.name;
   renderConsolePreview();
 }
 
@@ -1261,8 +1293,15 @@ function saveProfile() {
     iconType: me.iconType || "preset",
     iconId: me.iconId || "",
     iconUrl: me.iconUrl || "",
+    updatedAt: Date.now(),
   };
-  set(profileRef(myId), data).catch((e) => console.warn("プロフィール保存失敗:", e));
+  // まず端末ローカルに控える（クラウド書き込みが失敗しても保持される）
+  writeLocalProfile(myId, data);
+  // クラウドへ保存（失敗時は原因が分かるようトーストで通知）
+  set(profileRef(myId), data).catch((e) => {
+    console.warn("プロフィール保存失敗:", e);
+    toast("⚠ プロフィールをクラウドに保存できませんでした（" + (e.code || e.message) + "）");
+  });
   // 入室済みなら在席ノードを更新 → 他の参加者に即反映
   if (meRef) {
     update(meRef, {
@@ -1614,6 +1653,7 @@ function setupSignin() {
             iconType: "preset",
             iconId: defaultPresetIdFor(cred.user.uid),
             iconUrl: "",
+            updatedAt: Date.now(),
           });
         } catch (_) {}
       } else {
