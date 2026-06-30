@@ -36,6 +36,7 @@ let ROOM = null; // ロビーで確定（ルーム名＋合言葉から生成）
 const CALL_RADIUS = 30; // この距離以内で通話開始（旧120）
 const HANGUP_RADIUS = 48; // この距離を超えたら切断（ヒステリシスでバタつき防止・旧175）
 const FULL_VOLUME_RADIUS = 12; // この距離以内なら最大音量（以遠は離れるほど小さく・旧45）
+const PROXIMITY_CHIME_COOLDOWN_MS = 5000; // 境界付近の往復による連続通知を防ぐ
 const SPEED = 3.2;
 
 // ---- 自分 ----
@@ -198,10 +199,11 @@ const me = {
   iconId: "", // プリセットID（iconType==="preset"）
   iconUrl: "", // アップロード画像URL（iconType==="upload"）
   message: "", // 在席中だけ表示する最新のひとこと（履歴・永続保存なし）
+  active: false, // このタブが表示中かつ通話準備済み
 };
 camera.x = me.x; // 開始時のカメラを自分に合わせる（追従の初期ジャンプ防止）
 camera.y = me.y;
-const others = {}; // id -> {x, y, name, color, message?, announcing?, summon?}
+const others = {}; // id -> {x, y, name, color, active?, message?, messageEventId?, announcing?, summon?}
 let announcing = false; // 全体アナウンス中か（自分）
 let lastSummonTs = Date.now(); // 自分が処理済みの最新の集合ts（join前の古い集合は無視）
 let media = null; // MediaController（カメラ/マイク/背景/画面共有）
@@ -217,6 +219,97 @@ let gameState = GAME_STATES.OUTSIDE;
 let gameCooldownUntil = 0;
 let lockedGamePosition = null;
 let slimeGame = null;
+
+// ---- 通知音 / アクティブ状態 ----
+let notificationAudioContext = null;
+let communicationReady = false;
+let lastPublishedActive = null;
+let presenceInitialized = false;
+const seenMessageEventIds = new Map();
+const peersInChimeRange = new Set();
+const lastProximityChimeAt = new Map();
+
+function ensureNotificationAudio() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return null;
+  if (!notificationAudioContext) notificationAudioContext = new AudioContextClass();
+  return notificationAudioContext;
+}
+
+// ブラウザの自動再生制限を満たすため、入室操作のユーザージェスチャー内で呼ぶ。
+function unlockNotificationAudio() {
+  const audio = ensureNotificationAudio();
+  if (!audio) return;
+  const prime = () => {
+    const source = audio.createBufferSource();
+    source.buffer = audio.createBuffer(1, 1, audio.sampleRate);
+    source.connect(audio.destination);
+    source.start();
+  };
+  if (audio.state === "suspended") audio.resume().then(prime).catch(() => {});
+  else prime();
+}
+
+function scheduleChime(audio, kind) {
+  const start = audio.currentTime + 0.015;
+  const tones =
+    kind === "message"
+      ? [
+          { frequency: 659, offset: 0, duration: 0.09 },
+          { frequency: 988, offset: 0.11, duration: 0.14 },
+        ]
+      : [
+          { frequency: 880, offset: 0, duration: 0.08 },
+          { frequency: 1175, offset: 0.1, duration: 0.13 },
+        ];
+  for (const tone of tones) {
+    const at = start + tone.offset;
+    const oscillator = audio.createOscillator();
+    const gain = audio.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(tone.frequency, at);
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(0.08, at + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + tone.duration);
+    oscillator.connect(gain);
+    gain.connect(audio.destination);
+    oscillator.start(at);
+    oscillator.stop(at + tone.duration + 0.02);
+  }
+}
+
+function playNotificationChime(kind) {
+  const audio = ensureNotificationAudio();
+  if (!audio) return;
+  if (audio.state === "suspended") {
+    audio.resume().then(() => scheduleChime(audio, kind)).catch(() => {});
+  } else {
+    scheduleChime(audio, kind);
+  }
+}
+
+function createMessageEventId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function isAppActive() {
+  return communicationReady && document.visibilityState === "visible" && document.hasFocus();
+}
+
+function syncActivePresence() {
+  const active = isAppActive();
+  me.active = active;
+  if (!meRef || lastPublishedActive === active) return;
+  lastPublishedActive = active;
+  update(meRef, { active, activeAt: Date.now() }).catch(() => {
+    if (lastPublishedActive === active) lastPublishedActive = null;
+  });
+}
+
+document.addEventListener("visibilitychange", syncActivePresence);
+window.addEventListener("focus", syncActivePresence);
+window.addEventListener("blur", syncActivePresence);
 
 // ---- 映像タイル ----
 const videosEl = document.getElementById("videos");
@@ -346,11 +439,12 @@ function setupControls(media) {
       return;
     }
     try {
-      await update(meRef, { message: value });
+      await update(meRef, { message: value, messageEventId: createMessageEventId() });
       me.message = value;
       messageInput.value = value;
       syncMessageUI();
       messagePopover.hidden = true;
+      playNotificationChime("message");
       toast("ひとことメッセージを表示しました");
     } catch (e) {
       console.warn("メッセージ送信失敗:", e);
@@ -531,6 +625,8 @@ function setupControls(media) {
 function initPresence() {
   meRef = ref(db, `rooms/${ROOM}/players/${myId}`);
   onDisconnect(meRef).remove(); // タブを閉じたら自動削除
+  me.active = false;
+  lastPublishedActive = false;
   set(meRef, {
     x: Math.round(me.x),
     y: Math.round(me.y),
@@ -541,19 +637,35 @@ function initPresence() {
     iconUrl: me.iconUrl || "",
     announcing: false,
     sharing: false,
+    active: false,
+    activeAt: Date.now(),
     ts: Date.now(),
   });
 
   onValue(ref(db, `rooms/${ROOM}/players`), (snap) => {
     const all = snap.val() || {};
+    let messageChanged = false;
     for (const id in all) {
       if (id === myId) continue;
       others[id] = all[id];
+      const eventId = all[id].messageEventId || "";
+      if (
+        presenceInitialized &&
+        eventId &&
+        eventId !== seenMessageEventIds.get(id) &&
+        all[id].message
+      ) {
+        messageChanged = true;
+      }
+      seenMessageEventIds.set(id, eventId);
     }
     // 退出したプレイヤーを掃除
     for (const id in others) {
       if (!all[id]) {
         delete others[id];
+        seenMessageEventIds.delete(id);
+        peersInChimeRange.delete(id);
+        lastProximityChimeAt.delete(id);
         if (rtc) rtc.disconnectFrom(id);
         removeVideo(id);
       }
@@ -573,6 +685,12 @@ function initPresence() {
           toast(`📍 ${all[id].name || "誰か"} があなたを集合させました`);
         }
       }
+    }
+    if (messageChanged) playNotificationChime("message");
+    if (presenceInitialized) updateProximityChimes();
+    else {
+      seedProximityChimeRange();
+      presenceInitialized = true;
     }
     document.getElementById("status").textContent = `オンライン: ${Object.keys(all).length}人`;
   });
@@ -711,9 +829,47 @@ function step() {
 
 // ---- 接続判定（エリア / 全体アナウンス / 近接）----
 let rtc = null;
+function isPeerInCallRange(o, wasInRange) {
+  const mz = zoneOf(me);
+  const oz = zoneOf(o);
+  if (mz && oz) return mz === oz;
+  if (!mz && !oz) {
+    const distance = Math.hypot(o.x - me.x, o.y - me.y);
+    return distance <= (wasInRange ? HANGUP_RADIUS : CALL_RADIUS);
+  }
+  return false;
+}
+
+function seedProximityChimeRange() {
+  peersInChimeRange.clear();
+  for (const id in others) {
+    if (isPeerInCallRange(others[id], false)) peersInChimeRange.add(id);
+  }
+}
+
+function updateProximityChimes() {
+  if (!presenceInitialized) return;
+  const now = Date.now();
+  let shouldPlay = false;
+  for (const id in others) {
+    const wasInRange = peersInChimeRange.has(id);
+    const inRange = isPeerInCallRange(others[id], wasInRange);
+    if (inRange) peersInChimeRange.add(id);
+    else peersInChimeRange.delete(id);
+    if (
+      !wasInRange &&
+      inRange &&
+      now - (lastProximityChimeAt.get(id) || 0) >= PROXIMITY_CHIME_COOLDOWN_MS
+    ) {
+      lastProximityChimeAt.set(id, now);
+      shouldPlay = true;
+    }
+  }
+  if (shouldPlay) playNotificationChime("proximity");
+}
+
 function updateConnections() {
   if (!rtc) return;
-  const mz = zoneOf(me);
   for (const id in others) {
     const o = others[id];
     const connected = rtc.isConnected(id);
@@ -721,15 +877,7 @@ function updateConnections() {
     if (announcing || o.announcing) {
       want = true; // アナウンス中は全員と接続
     } else {
-      const oz = zoneOf(o);
-      if (mz && oz) {
-        want = mz === oz; // 同じ部屋にいれば通話
-      } else if (!mz && !oz) {
-        const d = Math.hypot(o.x - me.x, o.y - me.y);
-        want = connected ? d <= HANGUP_RADIUS : d <= CALL_RADIUS; // 屋外は近接＋ヒステリシス
-      } else {
-        want = false; // 片方だけ部屋の中なら繋がない
-      }
+      want = isPeerInCallRange(o, connected);
     }
     if (want && !connected) rtc.connectTo(id);
     else if (!want && connected) rtc.disconnectFrom(id);
@@ -950,11 +1098,18 @@ function drawMessageBubble(p, isMe) {
 
 function drawAvatar(p, isMe, connected) {
   const r = AVATAR_R;
-  if (connected) {
+  if (p.active) {
     ctx.beginPath();
     ctx.arc(p.x, p.y, r + 6, 0, Math.PI * 2);
     ctx.strokeStyle = "rgba(46, 204, 113, 0.9)";
     ctx.lineWidth = 4;
+    ctx.stroke();
+  }
+  if (connected) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r + 11, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(52, 152, 219, 0.9)";
+    ctx.lineWidth = 2;
     ctx.stroke();
   }
 
@@ -1096,7 +1251,8 @@ function render() {
   if (DEBUG) drawDebug();
 
   for (const id in others) {
-    drawAvatar(others[id], false, rtc && rtc.isConnected(id));
+    const diag = rtc && rtc.getDiag(id);
+    drawAvatar(others[id], false, !!diag && diag.conn === "connected");
   }
   drawAvatar(me, true, false);
   // 吹き出しはアバターより後に描き、他のアイコンに隠れにくくする。
@@ -1462,6 +1618,7 @@ function loop(now) {
   step();
   updateGameArea(t);
   flushPosition(t);
+  updateProximityChimes();
   updateConnections();
   updateSpatialAudio();
   updateBanner();
@@ -1499,6 +1656,8 @@ async function start() {
     onRemoteStream: addRemoteVideo,
     onClose: removeVideo,
   });
+  communicationReady = true;
+  syncActivePresence();
 
   // 5) ループ開始（入室時点を起点に HUD 自動非表示タイマーをリセット）
   showHud();
@@ -1701,6 +1860,7 @@ function setupLobby() {
   }
 
   async function doEnter() {
+    unlockNotificationAudio();
     const name = (nameInput.value || defaultName).slice(0, 16);
     const roomName = (urlRoom || roomInput.value || "").trim();
     const pass = passInput.value.trim();
