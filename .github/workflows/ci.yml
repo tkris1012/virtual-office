@@ -1,0 +1,46 @@
+name: CI
+
+# PR と main への push で、壊れたコード/設定が入らないよう最低限の検証を行う。
+# 依存パッケージ無し（node 標準のみ）で動く軽量チェック。
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 差分検出のため全履歴を取得
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: JavaScript の構文チェック（node --check）
+        run: |
+          set -e
+          for f in $(git ls-files '*.js'); do
+            echo "checking $f"
+            node --check "$f"
+          done
+
+      - name: JSON の妥当性チェック（database.rules.json など）
+        run: |
+          set -e
+          for f in $(git ls-files '*.json'); do
+            echo "checking $f"
+            node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))"
+          done
+
+      - name: セキュリティ重要ファイルの変更を警告（PR時のみ）
+        if: github.event_name == 'pull_request'
+        run: |
+          CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          echo "変更ファイル:"
+          echo "$CHANGED"
+          if echo "$CHANGED" | grep -E 'firebase-config\.js|database\.rules\.json|rtc\.js|\.github/workflows/'; then
+            echo "::warning::認証/ルール/TURN/CI に関わる重要ファイルが変更されています。マージ前に内容を必ず精査してください。"
+          fi
