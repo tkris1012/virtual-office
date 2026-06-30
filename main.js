@@ -50,7 +50,7 @@ const myColor = `hsl(${Math.floor(Math.random() * 360)}, 70%, 55%)`;
 const canvas = document.getElementById("map");
 const ctx = canvas.getContext("2d");
 
-// ---- ワールド（マップ）座標。RTDBで共有する座標系。office2.png の基準サイズ。----
+// ---- ワールド（マップ）座標。RTDBで共有する座標系。office3.png の基準サイズ。----
 // 既存コード(ゾーン/壁/描画)はワールド座標で書かれているため、名前は W/H のまま固定値にする。
 const W = 960; // WORLD_W（office3.png は 16:9）
 const H = 540; // WORLD_H
@@ -165,7 +165,7 @@ function canBeAt(x, y) {
 }
 
 // ---- エリア（部屋）: 同じエリアにいる人同士は距離に関係なく通話 ----
-// 座標は office2.png に合わせた正規化(0..1)。?debug で枠を見ながら調整可。
+// 座標は office3.png に合わせた正規化(0..1)。?debug で枠を見ながら調整可。
 // エリア通話は会議室だけ。それ以外の部屋は通常の近接通話（青い円）にする。
 const ZONES = [
   { id: "meeting", label: "会議室", x: 0.04, y: 0.07, w: 0.23, h: 0.39, rgb: "52,152,219" },
