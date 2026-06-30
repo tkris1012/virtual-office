@@ -159,6 +159,65 @@
   <!-- スマホ用バーチャルジョイスティック -->
   <div id="joystick"><div id="stick"></div></div>
 
+  <!-- ゲームコーナーのプレイ案内 -->
+  <div id="game-prompt" hidden>
+    <div class="game-prompt-copy">
+      <strong>🎮 スライムたたき</strong>
+      <span>ゲームコーナーで遊べます</span>
+    </div>
+    <span class="game-prompt-key">Eキー</span>
+    <button id="game-play" type="button">プレイ</button>
+  </div>
+
+  <!-- スライムゲーム（通話・映像は背後で継続） -->
+  <div
+    id="slime-game-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="slime-game-title"
+    hidden
+  >
+    <section class="slime-game-card">
+      <header class="slime-game-head">
+        <div>
+          <span class="slime-game-kicker">GAME CORNER</span>
+          <h2 id="slime-game-title">スライムたたき</h2>
+        </div>
+        <button
+          class="slime-game-close"
+          type="button"
+          data-game-close
+          aria-label="ゲームを終了"
+        >
+          <i class="ti ti-x" aria-hidden="true"></i>
+        </button>
+      </header>
+
+      <div class="slime-game-stats" aria-label="ゲーム状況">
+        <span>残り <strong id="slime-game-time">20</strong> 秒</span>
+        <span>得点 <strong id="slime-game-score">0</strong></span>
+        <span>最高 <strong id="slime-game-high-score">0</strong></span>
+      </div>
+
+      <canvas
+        id="slime-game-canvas"
+        width="480"
+        height="300"
+        tabindex="0"
+        aria-label="出現するスライムをクリックまたはタップしてください"
+      >
+        このゲームを遊ぶにはCanvas対応ブラウザが必要です。
+      </canvas>
+
+      <p class="slime-game-help">
+        緑は1点、★付きのゴールドスライムは3点です。
+      </p>
+      <button class="slime-game-quit" type="button" data-game-close>
+        ゲームをやめる
+      </button>
+    </section>
+  </div>
+
   <!-- プロフィール設定コンソール（左からスライドイン） -->
   <div id="console-backdrop" hidden></div>
   <aside id="console" hidden>
