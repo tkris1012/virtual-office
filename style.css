@@ -216,6 +216,54 @@ html, body {
 #btn-bg-image { width: 100%; margin-bottom: 8px; }
 #bg-note { font-size: 12px; color: #9aa4b8; display: block; }
 
+/* ひとことメッセージ */
+#message-popover { width: min(320px, calc(100vw - 32px)); }
+.message-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #e8edf7;
+  font-size: 13px;
+  font-weight: 700;
+}
+#message-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  color: var(--text);
+  background: #20263a;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  font: inherit;
+  outline: none;
+}
+#message-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+.message-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  color: #9aa4b8;
+  font-size: 11px;
+}
+.message-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.message-actions .ctrl-text { flex: 1; }
+.message-actions .primary {
+  color: #fff;
+  background: var(--accent);
+  border-color: transparent;
+}
+.message-actions .danger { color: #ffb4b0; }
+.message-actions .danger:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* 集合パネル */
 .sp-head { font-size: 13px; color: #cdd6ea; margin-bottom: 10px; }
 #summon-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
@@ -619,7 +667,17 @@ body.hud-hidden:not(.in-call) #videos {
 /* ---- 狭い画面の調整 ---- */
 @media (max-width: 600px) {
   .tile { width: 104px; height: 78px; }
-  .ctrl { width: 42px; height: 42px; }
+  .ctrl { flex: 0 0 42px; width: 42px; height: 42px; }
   .ctrl .ti { font-size: 19px; }
-  #controls { gap: 7px; padding: 7px 10px; }
+  #controls {
+    box-sizing: border-box;
+    width: max-content;
+    max-width: calc(100vw - 16px);
+    justify-content: flex-start;
+    gap: 7px;
+    padding: 7px 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  #controls::-webkit-scrollbar { display: none; }
 }

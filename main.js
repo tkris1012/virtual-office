@@ -188,10 +188,11 @@ const me = {
   iconType: "preset", // "preset" | "upload"
   iconId: "", // プリセットID（iconType==="preset"）
   iconUrl: "", // アップロード画像URL（iconType==="upload"）
+  message: "", // 在席中だけ表示する最新のひとこと（履歴・永続保存なし）
 };
 camera.x = me.x; // 開始時のカメラを自分に合わせる（追従の初期ジャンプ防止）
 camera.y = me.y;
-const others = {}; // id -> {x, y, name, color, announcing?, summon?}
+const others = {}; // id -> {x, y, name, color, message?, announcing?, summon?}
 let announcing = false; // 全体アナウンス中か（自分）
 let lastSummonTs = Date.now(); // 自分が処理済みの最新の集合ts（join前の古い集合は無視）
 let media = null; // MediaController（カメラ/マイク/背景/画面共有）
@@ -273,10 +274,16 @@ function setupControls(media) {
   const bgBtn = document.getElementById("btn-bg");
   const annBtn = document.getElementById("btn-announce");
   const summonBtn = document.getElementById("btn-summon");
+  const messageBtn = document.getElementById("btn-message");
 
   const bgPopover = document.getElementById("bg-popover");
   const summonPanel = document.getElementById("summon-panel");
   const summonList = document.getElementById("summon-list");
+  const messagePopover = document.getElementById("message-popover");
+  const messageInput = document.getElementById("message-input");
+  const messageCount = document.getElementById("message-count");
+  const messageSend = document.getElementById("message-send");
+  const messageClear = document.getElementById("message-clear");
 
   const bgMode = document.getElementById("bg-mode");
   const blurRange = document.getElementById("blur-range");
@@ -292,6 +299,58 @@ function setupControls(media) {
   const closePopovers = () => {
     bgPopover.hidden = true;
     summonPanel.hidden = true;
+    messagePopover.hidden = true;
+  };
+
+  // 改行を空白へ変換し、最新の15文字だけを扱う。履歴やプロフィールには保存しない。
+  const sanitizeMessage = (value) =>
+    Array.from(String(value || "").replace(/[\r\n\u2028\u2029]+/g, " "))
+      .slice(0, 15)
+      .join("");
+  const normalizeMessage = (value) => sanitizeMessage(value).trim();
+  const syncMessageUI = () => {
+    const value = sanitizeMessage(messageInput.value);
+    if (messageInput.value !== value) messageInput.value = value;
+    messageCount.textContent = `${Array.from(value).length} / 15`;
+    messageClear.disabled = !me.message;
+    messageBtn.classList.toggle("active", !!me.message);
+    messageBtn.setAttribute(
+      "aria-label",
+      me.message ? "ひとことメッセージ（表示中）" : "ひとことメッセージ"
+    );
+  };
+  const publishMessage = async () => {
+    const value = normalizeMessage(messageInput.value);
+    if (!value) {
+      toast("メッセージを入力してください");
+      messageInput.focus();
+      return;
+    }
+    try {
+      await update(meRef, { message: value });
+      me.message = value;
+      messageInput.value = value;
+      syncMessageUI();
+      messagePopover.hidden = true;
+      toast("ひとことメッセージを表示しました");
+    } catch (e) {
+      console.warn("メッセージ送信失敗:", e);
+      toast("メッセージを表示できませんでした");
+    }
+  };
+  const clearMessage = async () => {
+    if (!me.message) return;
+    try {
+      await update(meRef, { message: null });
+      me.message = "";
+      messageInput.value = "";
+      syncMessageUI();
+      messagePopover.hidden = true;
+      toast("ひとことメッセージを削除しました");
+    } catch (e) {
+      console.warn("メッセージ削除失敗:", e);
+      toast("メッセージを削除できませんでした");
+    }
   };
 
   function syncCamUI() {
@@ -419,10 +478,33 @@ function setupControls(media) {
     toast(`${targets.length}人を自分の場所に集合させました`);
   });
 
+  // --- ひとことメッセージ（プレイヤーごとに最新1件だけ上書き）---
+  messageBtn.addEventListener("click", () => {
+    const show = messagePopover.hidden;
+    closePopovers();
+    if (show) {
+      messageInput.value = me.message || "";
+      syncMessageUI();
+      messagePopover.hidden = false;
+      messageInput.focus();
+      messageInput.select();
+    }
+  });
+  messageInput.addEventListener("input", syncMessageUI);
+  messageInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      publishMessage();
+    }
+  });
+  messageSend.addEventListener("click", publishMessage);
+  messageClear.addEventListener("click", clearMessage);
+
   syncCamUI();
   syncMicUI();
   syncScreenUI();
   syncBgUI();
+  syncMessageUI();
 }
 
 // ---- presence (Realtime Database) ----
@@ -730,6 +812,100 @@ function drawImageCover(img, cx, cy, size) {
 }
 
 const AVATAR_R = 16;
+const MESSAGE_MAX_WIDTH = 120;
+const MESSAGE_PADDING_X = 5;
+const MESSAGE_PADDING_Y = 4;
+const MESSAGE_LINE_HEIGHT = 8;
+
+function messageLines(message) {
+  const text = Array.from(String(message || "").replace(/[\r\n\u2028\u2029]+/g, " "))
+    .slice(0, 15)
+    .join("");
+  if (!text) return [];
+  const lines = [];
+  let line = "";
+  for (const char of Array.from(text)) {
+    const next = line + char;
+    if (line && ctx.measureText(next).width > MESSAGE_MAX_WIDTH - MESSAGE_PADDING_X * 2) {
+      lines.push(line);
+      line = char;
+    } else {
+      line = next;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function roundedRectPath(x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function drawMessageBubble(p, isMe) {
+  if (!p.message) return;
+  ctx.save();
+  ctx.font = "6px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+
+  const lines = messageLines(p.message);
+  if (!lines.length) {
+    ctx.restore();
+    return;
+  }
+  const textWidth = Math.max(...lines.map((line) => ctx.measureText(line).width));
+  const width = Math.min(MESSAGE_MAX_WIDTH, Math.max(24, textWidth + MESSAGE_PADDING_X * 2));
+  const height = lines.length * MESSAGE_LINE_HEIGHT + MESSAGE_PADDING_Y * 2;
+  const tailHeight = 3;
+  const x = Math.max(4, Math.min(W - width - 4, p.x - width / 2));
+  const aboveBottom = p.y - AVATAR_R - 30;
+  const placeBelow = aboveBottom - height < 4;
+  const y = placeBelow ? p.y + AVATAR_R + 12 : aboveBottom - height;
+  const tailX = Math.max(x + 6, Math.min(x + width - 6, p.x));
+
+  roundedRectPath(x, y, width, height, 4);
+  ctx.fillStyle = isMe ? "rgba(32, 104, 72, 0.96)" : "rgba(24, 30, 45, 0.96)";
+  ctx.fill();
+  ctx.strokeStyle = isMe ? "rgba(133, 235, 183, 0.9)" : "rgba(255, 255, 255, 0.65)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.beginPath();
+  if (placeBelow) {
+    ctx.moveTo(tailX - 3, y);
+    ctx.lineTo(tailX, y - tailHeight);
+    ctx.lineTo(tailX + 3, y);
+  } else {
+    ctx.moveTo(tailX - 3, aboveBottom);
+    ctx.lineTo(tailX, aboveBottom + tailHeight);
+    ctx.lineTo(tailX + 3, aboveBottom);
+  }
+  ctx.closePath();
+  ctx.fillStyle = isMe ? "rgba(32, 104, 72, 0.96)" : "rgba(24, 30, 45, 0.96)";
+  ctx.fill();
+
+  ctx.fillStyle = "#fff";
+  lines.forEach((line, index) => {
+    ctx.fillText(
+      line,
+      x + MESSAGE_PADDING_X,
+      y + MESSAGE_PADDING_Y + MESSAGE_LINE_HEIGHT * (index + 0.5)
+    );
+  });
+  ctx.restore();
+}
+
 function drawAvatar(p, isMe, connected) {
   const r = AVATAR_R;
   if (connected) {
@@ -871,6 +1047,11 @@ function render() {
     drawAvatar(others[id], false, rtc && rtc.isConnected(id));
   }
   drawAvatar(me, true, false);
+  // 吹き出しはアバターより後に描き、他のアイコンに隠れにくくする。
+  for (const id in others) {
+    drawMessageBubble(others[id], false);
+  }
+  drawMessageBubble(me, true);
 
   ctx.setTransform(1, 0, 0, 1, 0, 0); // 後始末
 }
@@ -931,8 +1112,9 @@ let wasInCall = false;
 function isHudPaused() {
   const bg = document.getElementById("bg-popover");
   const sp = document.getElementById("summon-panel");
+  const mp = document.getElementById("message-popover");
   const cs = document.getElementById("console");
-  return (bg && !bg.hidden) || (sp && !sp.hidden) || (cs && !cs.hidden);
+  return (bg && !bg.hidden) || (sp && !sp.hidden) || (mp && !mp.hidden) || (cs && !cs.hidden);
 }
 function showHud() {
   hudVisible = true;
