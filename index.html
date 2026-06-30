@@ -88,16 +88,22 @@
 
   <!-- 下中央: アイコン操作バー -->
   <div id="controls">
-    <button id="btn-cam" class="ctrl" type="button" aria-label="カメラ"><i class="ti ti-video" aria-hidden="true"></i></button>
-    <button id="btn-mic" class="ctrl" type="button" aria-label="マイク"><i class="ti ti-microphone" aria-hidden="true"></i></button>
-    <button id="btn-screen" class="ctrl" type="button" aria-label="画面共有"><i class="ti ti-screen-share" aria-hidden="true"></i></button>
-    <button id="btn-bg" class="ctrl" type="button" aria-label="背景"><i class="ti ti-wallpaper" aria-hidden="true"></i></button>
-    <button id="btn-announce" class="ctrl" type="button" aria-label="アナウンス"><i class="ti ti-speakerphone" aria-hidden="true"></i></button>
-    <button id="btn-summon" class="ctrl" type="button" aria-label="集合"><i class="ti ti-users" aria-hidden="true"></i></button>
-    <button id="btn-message" class="ctrl" type="button" aria-label="ひとことメッセージ"><i class="ti ti-message-circle" aria-hidden="true"></i></button>
-    <button id="btn-invite" class="ctrl" type="button" aria-label="招待リンク"><i class="ti ti-link" aria-hidden="true"></i></button>
-    <button id="btn-settings" class="ctrl" type="button" aria-label="プロフィール設定"><i class="ti ti-settings" aria-hidden="true"></i></button>
-    <button id="btn-leave" class="ctrl" type="button" aria-label="退出"><i class="ti ti-logout" aria-hidden="true"></i></button>
+    <button id="btn-cam" class="ctrl" type="button" aria-label="カメラ" data-help="自分の映像をオン／オフ"><i class="ti ti-video" aria-hidden="true"></i></button>
+    <button id="btn-mic" class="ctrl" type="button" aria-label="マイク" data-help="自分の音声をオン／オフ"><i class="ti ti-microphone" aria-hidden="true"></i></button>
+    <button id="btn-screen" class="ctrl" type="button" aria-label="画面共有" data-help="自分の画面を参加者へ共有"><i class="ti ti-screen-share" aria-hidden="true"></i></button>
+    <button id="btn-bg" class="ctrl" type="button" aria-label="背景" data-help="ぼかし・バーチャル背景を設定"><i class="ti ti-wallpaper" aria-hidden="true"></i></button>
+    <button id="btn-announce" class="ctrl" type="button" aria-label="アナウンス" data-help="ルーム全員へ音声を配信"><i class="ti ti-speakerphone" aria-hidden="true"></i></button>
+    <button id="btn-summon" class="ctrl" type="button" aria-label="集合" data-help="選択したメンバーを自分の場所へ呼ぶ"><i class="ti ti-users" aria-hidden="true"></i></button>
+    <button id="btn-message" class="ctrl" type="button" aria-label="ひとことメッセージ" data-help="アバター上に短いメッセージを表示"><i class="ti ti-message-circle" aria-hidden="true"></i></button>
+    <button id="btn-invite" class="ctrl" type="button" aria-label="招待リンク" data-help="合言葉入りの招待URLをコピー"><i class="ti ti-link" aria-hidden="true"></i></button>
+    <button id="btn-settings" class="ctrl" type="button" aria-label="プロフィール設定" data-help="表示名やアイコンを変更"><i class="ti ti-settings" aria-hidden="true"></i></button>
+    <button id="btn-leave" class="ctrl" type="button" aria-label="退出" data-help="現在のルームから退出"><i class="ti ti-logout" aria-hidden="true"></i></button>
+  </div>
+
+  <!-- 下部コントロール共通ツールチップ -->
+  <div id="control-tooltip" role="tooltip" hidden>
+    <strong id="control-tooltip-title"></strong>
+    <span id="control-tooltip-help"></span>
   </div>
 
   <!-- 背景ポップオーバー -->

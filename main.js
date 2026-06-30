@@ -1102,6 +1102,125 @@ function updateShareStage() {
   }
 }
 
+// ---- 下部コントロールのツールチップ ----
+const CONTROL_TOOLTIP_DELAY_MS = 300;
+const CONTROL_TOOLTIP_FADE_MS = 120;
+let controlTooltipShowTimer = null;
+let controlTooltipHideTimer = null;
+let hoveredControlButton = null;
+let keyboardFocusedControlButton = null;
+let activeControlTooltipButton = null;
+let keyboardNavigation = false;
+
+function isControlTooltipInteractionActive() {
+  return !!hoveredControlButton || !!keyboardFocusedControlButton;
+}
+
+function positionControlTooltip(button) {
+  const tooltip = document.getElementById("control-tooltip");
+  if (!tooltip || tooltip.hidden || !button) return;
+
+  const margin = 8;
+  const buttonRect = button.getBoundingClientRect();
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const centeredLeft = buttonRect.left + buttonRect.width / 2 - tooltipRect.width / 2;
+  const maxLeft = Math.max(margin, window.innerWidth - tooltipRect.width - margin);
+
+  tooltip.style.left = `${Math.max(margin, Math.min(maxLeft, centeredLeft))}px`;
+  tooltip.style.top = `${Math.max(margin, buttonRect.top - tooltipRect.height - margin)}px`;
+}
+
+function showControlTooltip(button) {
+  const tooltip = document.getElementById("control-tooltip");
+  const title = document.getElementById("control-tooltip-title");
+  const help = document.getElementById("control-tooltip-help");
+  if (!tooltip || !title || !help || !button) return;
+
+  clearTimeout(controlTooltipHideTimer);
+  activeControlTooltipButton = button;
+  title.textContent = button.getAttribute("aria-label") || "";
+  help.textContent = button.dataset.help || "";
+  tooltip.hidden = false;
+  positionControlTooltip(button);
+
+  requestAnimationFrame(() => {
+    if (activeControlTooltipButton === button) tooltip.classList.add("visible");
+  });
+}
+
+function hideControlTooltip(immediate = false) {
+  clearTimeout(controlTooltipShowTimer);
+  clearTimeout(controlTooltipHideTimer);
+  activeControlTooltipButton = null;
+
+  const tooltip = document.getElementById("control-tooltip");
+  if (!tooltip) return;
+  tooltip.classList.remove("visible");
+  if (immediate) {
+    tooltip.hidden = true;
+    return;
+  }
+  controlTooltipHideTimer = setTimeout(() => {
+    if (!activeControlTooltipButton) tooltip.hidden = true;
+  }, CONTROL_TOOLTIP_FADE_MS);
+}
+
+function setupControlTooltips() {
+  const controls = document.getElementById("controls");
+  if (!controls) return;
+
+  const buttons = controls.querySelectorAll(".ctrl[data-help]");
+  buttons.forEach((button) => {
+    button.addEventListener("pointerenter", (event) => {
+      if (event.pointerType === "touch") return;
+      hoveredControlButton = button;
+      noteHudActivity();
+      clearTimeout(controlTooltipShowTimer);
+      controlTooltipShowTimer = setTimeout(() => {
+        if (hoveredControlButton === button) showControlTooltip(button);
+      }, CONTROL_TOOLTIP_DELAY_MS);
+    });
+
+    button.addEventListener("pointerleave", () => {
+      if (hoveredControlButton === button) hoveredControlButton = null;
+      if (!keyboardFocusedControlButton) hideControlTooltip();
+    });
+
+    button.addEventListener("focus", () => {
+      if (!keyboardNavigation) return;
+      keyboardFocusedControlButton = button;
+      noteHudActivity();
+      showControlTooltip(button);
+    });
+
+    button.addEventListener("blur", () => {
+      if (keyboardFocusedControlButton === button) keyboardFocusedControlButton = null;
+      if (!hoveredControlButton) hideControlTooltip();
+    });
+
+    button.addEventListener("click", () => hideControlTooltip());
+  });
+
+  document.addEventListener(
+    "pointerdown",
+    () => {
+      keyboardNavigation = false;
+      keyboardFocusedControlButton = null;
+    },
+    true
+  );
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Tab") keyboardNavigation = true;
+    if (event.key === "Escape") hideControlTooltip();
+  });
+  window.addEventListener("resize", () => {
+    if (activeControlTooltipButton) positionControlTooltip(activeControlTooltipButton);
+  });
+  controls.addEventListener("scroll", () => {
+    if (activeControlTooltipButton) positionControlTooltip(activeControlTooltipButton);
+  });
+}
+
 // ---- HUD 自動表示/非表示（無操作で隠す＋マップのタップ/クリックでトグル）----
 const HUD_AUTOHIDE_MS = 5000; // 無操作がこの時間続いたら自動非表示
 let hudVisible = true;
@@ -1114,7 +1233,13 @@ function isHudPaused() {
   const sp = document.getElementById("summon-panel");
   const mp = document.getElementById("message-popover");
   const cs = document.getElementById("console");
-  return (bg && !bg.hidden) || (sp && !sp.hidden) || (mp && !mp.hidden) || (cs && !cs.hidden);
+  return (
+    (bg && !bg.hidden) ||
+    (sp && !sp.hidden) ||
+    (mp && !mp.hidden) ||
+    (cs && !cs.hidden) ||
+    isControlTooltipInteractionActive()
+  );
 }
 function showHud() {
   hudVisible = true;
@@ -1123,6 +1248,7 @@ function showHud() {
 }
 function hideHud() {
   hudVisible = false;
+  hideControlTooltip(true);
   document.body.classList.add("hud-hidden");
 }
 function toggleHud() {
@@ -1965,6 +2091,8 @@ function initAuthFlow() {
 }
 
 // ---- 起動の振り分け ----
+setupControlTooltips();
+
 if (ICETEST) {
   document.getElementById("signin").hidden = true;
   document.getElementById("lobby").hidden = true;
