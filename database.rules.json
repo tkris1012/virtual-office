@@ -15,7 +15,10 @@
         "players": {
           ".read": "auth != null",
           "$uid": {
-            ".write": "auth != null && auth.uid === $uid"
+            ".write": "auth != null && auth.uid === $uid",
+            "message": {
+              ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 15)"
+            }
           }
         },
         "connections": {
