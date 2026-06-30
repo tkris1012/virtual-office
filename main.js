@@ -23,6 +23,7 @@ import {
 import { RTCManager, getIceServers, runIceTest } from "./rtc.js";
 import { MediaController } from "./media.js";
 import { PRESET_ICONS, presetById, defaultPresetIdFor, EMOJI_FONT } from "./avatars.js";
+import { SlimeGame } from "./slime-game.js";
 
 // ---- 設定 ----
 const params = new URLSearchParams(location.search);
@@ -169,6 +170,7 @@ function canBeAt(x, y) {
 const ZONES = [
   { id: "meeting", label: "会議室", x: 0.04, y: 0.07, w: 0.23, h: 0.39, rgb: "52,152,219" },
 ];
+const GAME_AREA = { id: "slime-game", x: 0.59, y: 0.54, w: 0.24, h: 0.3 };
 function zoneOf(p) {
   for (const z of ZONES) {
     const zx = z.x * W,
@@ -178,6 +180,13 @@ function zoneOf(p) {
     if (p.x >= zx && p.x <= zx + zw && p.y >= zy && p.y <= zy + zh) return z.id;
   }
   return null;
+}
+function isInGameArea(p) {
+  const x = GAME_AREA.x * W;
+  const y = GAME_AREA.y * H;
+  const width = GAME_AREA.w * W;
+  const height = GAME_AREA.h * H;
+  return p.x >= x && p.x <= x + width && p.y >= y && p.y <= y + height;
 }
 
 const me = {
@@ -198,6 +207,16 @@ let lastSummonTs = Date.now(); // 自分が処理済みの最新の集合ts（jo
 let media = null; // MediaController（カメラ/マイク/背景/画面共有）
 let currentRoomName = ""; // 入室中ルームの表示名（招待リンク生成に使う）
 let currentPassphrase = ""; // 入室中ルームの合言葉（招待リンクに埋め込む）
+const GAME_STATES = Object.freeze({
+  OUTSIDE: "OUTSIDE",
+  READY: "READY",
+  PLAYING: "PLAYING",
+  COOLDOWN: "COOLDOWN",
+});
+let gameState = GAME_STATES.OUTSIDE;
+let gameCooldownUntil = 0;
+let lockedGamePosition = null;
+let slimeGame = null;
 
 // ---- 映像タイル ----
 const videosEl = document.getElementById("videos");
@@ -545,10 +564,14 @@ function initPresence() {
       const s = all[id].summon;
       if (s && Array.isArray(s.targets) && s.targets.includes(myId) && s.ts > lastSummonTs) {
         lastSummonTs = s.ts;
-        me.x = s.x;
-        me.y = s.y;
-        dirty = true;
-        toast(`📍 ${all[id].name || "誰か"} があなたを集合させました`);
+        if (slimeGame && slimeGame.isPlaying()) {
+          toast(`🎮 ゲーム中のため ${all[id].name || "誰か"} からの集合を見送りました`);
+        } else {
+          me.x = s.x;
+          me.y = s.y;
+          dirty = true;
+          toast(`📍 ${all[id].name || "誰か"} があなたを集合させました`);
+        }
       }
     }
     document.getElementById("status").textContent = `オンライン: ${Object.keys(all).length}人`;
@@ -570,6 +593,7 @@ function flushPosition(now) {
 // ---- 入力 ----
 const keys = {};
 addEventListener("keydown", (e) => {
+  if (slimeGame && slimeGame.isPlaying()) return;
   keys[e.key.toLowerCase()] = true;
 });
 addEventListener("keyup", (e) => {
@@ -592,6 +616,10 @@ function joyPoint(e) {
   return e;
 }
 function joyStart(e) {
+  if (slimeGame && slimeGame.isPlaying()) {
+    e.preventDefault();
+    return;
+  }
   const rect = joyEl.getBoundingClientRect();
   joy.cx = rect.left + rect.width / 2;
   joy.cy = rect.top + rect.height / 2;
@@ -621,6 +649,12 @@ function joyEnd() {
   joy.dy = 0;
   stickEl.style.transform = "translate(0px, 0px)";
 }
+function clearMovementInput() {
+  Object.keys(keys).forEach((key) => {
+    keys[key] = false;
+  });
+  joyEnd();
+}
 if (joyEl) {
   joyEl.addEventListener("touchstart", joyStart, { passive: false });
   window.addEventListener("touchmove", joyMove, { passive: false });
@@ -633,6 +667,14 @@ if (joyEl) {
 }
 
 function step() {
+  if (slimeGame && slimeGame.isPlaying()) {
+    if (lockedGamePosition) {
+      me.x = lockedGamePosition.x;
+      me.y = lockedGamePosition.y;
+    }
+    return;
+  }
+
   let dx = 0;
   let dy = 0;
   if (keys["arrowup"] || keys["w"]) dy -= 1;
@@ -987,6 +1029,16 @@ function drawDebug() {
   }
   ctx.fillStyle = "rgba(255,0,0,0.35)";
   for (const w of WALLS) ctx.fillRect(w.x, w.y, w.w, w.h);
+  const gx = GAME_AREA.x * W;
+  const gy = GAME_AREA.y * H;
+  const gw = GAME_AREA.w * W;
+  const gh = GAME_AREA.h * H;
+  ctx.fillStyle = "rgba(80,220,120,0.16)";
+  ctx.fillRect(gx, gy, gw, gh);
+  ctx.strokeStyle = "rgba(100,255,150,0.9)";
+  ctx.strokeRect(gx, gy, gw, gh);
+  ctx.fillStyle = "rgba(100,255,150,1)";
+  ctx.fillText("GAME_AREA", gx + 4, gy + 14);
   ctx.restore();
 }
 
@@ -1221,6 +1273,105 @@ function setupControlTooltips() {
   });
 }
 
+// ---- ゲームコーナー「スライムたたき」 ----
+function isEditableTarget(target) {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+  );
+}
+
+function finishSlimeGameSession() {
+  document.body.classList.remove("game-open");
+  lockedGamePosition = null;
+  clearMovementInput();
+  gameState = GAME_STATES.COOLDOWN;
+  gameCooldownUntil = performance.now() + 1000;
+  const prompt = document.getElementById("game-prompt");
+  const playButton = document.getElementById("game-play");
+  prompt.hidden = !isInGameArea(me);
+  playButton.setAttribute("aria-disabled", "true");
+  showHud();
+  if (!prompt.hidden) playButton.focus({ preventScroll: true });
+}
+
+function startSlimeGame() {
+  if (!slimeGame || gameState !== GAME_STATES.READY) return;
+
+  clearMovementInput();
+  lockedGamePosition = { x: me.x, y: me.y };
+  gameState = GAME_STATES.PLAYING;
+  document.getElementById("game-prompt").hidden = true;
+  document.body.classList.add("game-open");
+  showHud();
+
+  if (!slimeGame.start() && gameState === GAME_STATES.PLAYING) {
+    finishSlimeGameSession();
+  }
+}
+
+function updateGameArea(now) {
+  const prompt = document.getElementById("game-prompt");
+  const playButton = document.getElementById("game-play");
+  if (!prompt || gameState === GAME_STATES.PLAYING) return;
+
+  if (!isInGameArea(me)) {
+    gameState = GAME_STATES.OUTSIDE;
+    prompt.hidden = true;
+    playButton.removeAttribute("aria-disabled");
+    return;
+  }
+
+  if (gameState === GAME_STATES.OUTSIDE) gameState = GAME_STATES.READY;
+  if (gameState === GAME_STATES.COOLDOWN && now < gameCooldownUntil) {
+    prompt.hidden = false;
+    playButton.setAttribute("aria-disabled", "true");
+    return;
+  }
+  if (gameState === GAME_STATES.COOLDOWN && now >= gameCooldownUntil) {
+    gameState = GAME_STATES.READY;
+  }
+  playButton.removeAttribute("aria-disabled");
+  prompt.hidden = gameState !== GAME_STATES.READY;
+}
+
+function setupSlimeGame() {
+  const modal = document.getElementById("slime-game-modal");
+  const canvas = document.getElementById("slime-game-canvas");
+  const playButton = document.getElementById("game-play");
+  if (!modal || !canvas || !playButton) return;
+
+  slimeGame = new SlimeGame({
+    modal,
+    canvas,
+    timeEl: document.getElementById("slime-game-time"),
+    scoreEl: document.getElementById("slime-game-score"),
+    highScoreEl: document.getElementById("slime-game-high-score"),
+    onFinish: ({ score, highScore }) => {
+      finishSlimeGameSession();
+      toast(`スライムたたき終了！ ${score}点（自己ベスト ${highScore}点）`);
+    },
+    onCancel: finishSlimeGameSession,
+    onError: (error) => {
+      console.error("スライムゲームエラー:", error);
+      finishSlimeGameSession();
+      toast("ゲームを開始できませんでした");
+    },
+  });
+
+  playButton.addEventListener("click", startSlimeGame);
+  addEventListener("keydown", (event) => {
+    if (
+      event.key.toLowerCase() === "e" &&
+      gameState === GAME_STATES.READY &&
+      !isEditableTarget(event.target)
+    ) {
+      event.preventDefault();
+      startSlimeGame();
+    }
+  });
+}
+
 // ---- HUD 自動表示/非表示（無操作で隠す＋マップのタップ/クリックでトグル）----
 const HUD_AUTOHIDE_MS = 5000; // 無操作がこの時間続いたら自動非表示
 let hudVisible = true;
@@ -1238,6 +1389,7 @@ function isHudPaused() {
     (sp && !sp.hidden) ||
     (mp && !mp.hidden) ||
     (cs && !cs.hidden) ||
+    (slimeGame && slimeGame.isPlaying()) ||
     isControlTooltipInteractionActive()
   );
 }
@@ -1308,6 +1460,7 @@ canvas.addEventListener("pointercancel", () => {
 function loop(now) {
   const t = now || performance.now();
   step();
+  updateGameArea(t);
   flushPosition(t);
   updateConnections();
   updateSpatialAudio();
@@ -1470,6 +1623,7 @@ async function copyInvite() {
 }
 // 退出: 在席削除・全切断・メディア停止のうえ、クエリ/ハッシュを消してロビーへ戻す（完全リセット）
 async function leaveRoom() {
+  if (slimeGame && slimeGame.isPlaying()) slimeGame.cancel();
   try {
     if (meRef) await remove(meRef);
   } catch (_) {}
@@ -2092,6 +2246,7 @@ function initAuthFlow() {
 
 // ---- 起動の振り分け ----
 setupControlTooltips();
+setupSlimeGame();
 
 if (ICETEST) {
   document.getElementById("signin").hidden = true;
