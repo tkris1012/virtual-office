@@ -18,6 +18,11 @@
             ".write": "auth != null && auth.uid === $uid",
             "message": {
               ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 15)"
+            },
+            "stampEvents": {
+              "$eventId": {
+                ".validate": "!newData.exists() || (newData.hasChildren(['type', 'ts']) && newData.child('type').isString() && (newData.child('type').val() === 'like' || newData.child('type').val() === 'clap' || newData.child('type').val() === 'party' || newData.child('type').val() === 'heart' || newData.child('type').val() === 'laugh' || newData.child('type').val() === 'sad') && newData.child('ts').isNumber())"
+              }
             }
           }
         },

@@ -10,6 +10,7 @@ import {
   onValue,
   onDisconnect,
   remove,
+  serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 import {
   GoogleAuthProvider,
@@ -199,6 +200,7 @@ const me = {
   iconId: "", // プリセットID（iconType==="preset"）
   iconUrl: "", // アップロード画像URL（iconType==="upload"）
   message: "", // 在席中だけ表示する最新のひとこと（履歴・永続保存なし）
+  messageEventId: "",
   active: false, // このタブが表示中かつ通話準備済み
 };
 camera.x = me.x; // 開始時のカメラを自分に合わせる（追従の初期ジャンプ防止）
@@ -225,9 +227,21 @@ let notificationAudioContext = null;
 let communicationReady = false;
 let lastPublishedActive = null;
 let presenceInitialized = false;
+let presenceConnectionUnsubscribe = null;
 const seenMessageEventIds = new Map();
+const seenStampEventIds = new Map();
 const peersInChimeRange = new Set();
 const lastProximityChimeAt = new Map();
+const activeStamps = [];
+const STAMP_DURATION_MS = 1200;
+const STAMP_TYPES = Object.freeze({
+  like: "👍",
+  clap: "👏",
+  party: "🎉",
+  heart: "❤️",
+  laugh: "😂",
+  sad: "😢",
+});
 
 function ensureNotificationAudio() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -252,24 +266,31 @@ function unlockNotificationAudio() {
 
 function scheduleChime(audio, kind) {
   const start = audio.currentTime + 0.015;
-  const tones =
-    kind === "message"
-      ? [
-          { frequency: 659, offset: 0, duration: 0.09 },
-          { frequency: 988, offset: 0.11, duration: 0.14 },
-        ]
-      : [
-          { frequency: 880, offset: 0, duration: 0.08 },
-          { frequency: 1175, offset: 0.1, duration: 0.13 },
-        ];
+  let tones;
+  if (kind === "message") {
+    tones = [
+      { frequency: 659, offset: 0, duration: 0.09 },
+      { frequency: 988, offset: 0.11, duration: 0.14 },
+    ];
+  } else if (kind === "stamp") {
+    tones = [
+      { frequency: 784, offset: 0, duration: 0.06, type: "triangle", gain: 0.06 },
+      { frequency: 1047, offset: 0.07, duration: 0.1, type: "triangle", gain: 0.06 },
+    ];
+  } else {
+    tones = [
+      { frequency: 880, offset: 0, duration: 0.08 },
+      { frequency: 1175, offset: 0.1, duration: 0.13 },
+    ];
+  }
   for (const tone of tones) {
     const at = start + tone.offset;
     const oscillator = audio.createOscillator();
     const gain = audio.createGain();
-    oscillator.type = "sine";
+    oscillator.type = tone.type || "sine";
     oscillator.frequency.setValueAtTime(tone.frequency, at);
     gain.gain.setValueAtTime(0.0001, at);
-    gain.gain.exponentialRampToValueAtTime(0.08, at + 0.01);
+    gain.gain.exponentialRampToValueAtTime(tone.gain || 0.08, at + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, at + tone.duration);
     oscillator.connect(gain);
     gain.connect(audio.destination);
@@ -288,13 +309,75 @@ function playNotificationChime(kind) {
   }
 }
 
-function createMessageEventId() {
+function createEventId() {
   if (crypto.randomUUID) return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function safeDisplayName(value, fallback = "ゲスト") {
+  const name = typeof value === "string" ? value.trim() : "";
+  if (!name || name.toLowerCase() === "undefined" || name.toLowerCase() === "null") {
+    return fallback;
+  }
+  return Array.from(name).slice(0, 16).join("");
+}
+
+function normalizePlayer(id, value) {
+  if (!value || typeof value !== "object") return null;
+  if (!Number.isFinite(value.x) || !Number.isFinite(value.y)) return null;
+  const iconUrl = typeof value.iconUrl === "string" ? value.iconUrl : "";
+  const useUpload = value.iconType === "upload" && !!iconUrl;
+  const requestedIconId = typeof value.iconId === "string" ? value.iconId : "";
+  const iconId = presetById(requestedIconId) ? requestedIconId : defaultPresetIdFor(id);
+  return {
+    ...value,
+    x: Math.max(0, Math.min(W, value.x)),
+    y: Math.max(0, Math.min(H, value.y)),
+    name: safeDisplayName(value.name),
+    color: typeof value.color === "string" && value.color ? value.color : "#888",
+    iconType: useUpload ? "upload" : "preset",
+    iconId,
+    iconUrl: useUpload ? iconUrl : "",
+    message:
+      typeof value.message === "string"
+        ? Array.from(value.message.replace(/[\r\n\u2028\u2029]+/g, " ")).slice(0, 15).join("")
+        : "",
+  };
+}
+
 function isAppActive() {
   return communicationReady && document.visibilityState === "visible" && document.hasFocus();
+}
+
+function currentPresencePayload() {
+  const active = isAppActive();
+  return {
+    x: Math.round(me.x),
+    y: Math.round(me.y),
+    name: safeDisplayName(me.name, defaultName),
+    color: typeof me.color === "string" && me.color ? me.color : myColor,
+    iconType: me.iconType === "upload" && me.iconUrl ? "upload" : "preset",
+    iconId: me.iconId || defaultPresetIdFor(myId || ""),
+    iconUrl: me.iconType === "upload" ? me.iconUrl || "" : "",
+    announcing: !!announcing,
+    sharing: !!(media && media.screenOn),
+    message: me.message || null,
+    messageEventId: me.message ? me.messageEventId || null : null,
+    active,
+    activeAt: Date.now(),
+    ts: Date.now(),
+  };
+}
+
+function restorePresence() {
+  if (!meRef) return Promise.resolve();
+  const payload = currentPresencePayload();
+  me.active = payload.active;
+  lastPublishedActive = payload.active;
+  return update(meRef, payload).catch((error) => {
+    lastPublishedActive = null;
+    console.warn("在席情報の復元失敗:", error);
+  });
 }
 
 function syncActivePresence() {
@@ -307,8 +390,11 @@ function syncActivePresence() {
   });
 }
 
-document.addEventListener("visibilitychange", syncActivePresence);
-window.addEventListener("focus", syncActivePresence);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") restorePresence();
+  else syncActivePresence();
+});
+window.addEventListener("focus", restorePresence);
 window.addEventListener("blur", syncActivePresence);
 
 // ---- 映像タイル ----
@@ -387,6 +473,7 @@ function setupControls(media) {
   const annBtn = document.getElementById("btn-announce");
   const summonBtn = document.getElementById("btn-summon");
   const messageBtn = document.getElementById("btn-message");
+  const stampBtn = document.getElementById("btn-stamp");
 
   const bgPopover = document.getElementById("bg-popover");
   const summonPanel = document.getElementById("summon-panel");
@@ -396,6 +483,8 @@ function setupControls(media) {
   const messageCount = document.getElementById("message-count");
   const messageSend = document.getElementById("message-send");
   const messageClear = document.getElementById("message-clear");
+  const stampPopover = document.getElementById("stamp-popover");
+  const stampOptions = stampPopover.querySelectorAll("[data-stamp]");
 
   const bgMode = document.getElementById("bg-mode");
   const blurRange = document.getElementById("blur-range");
@@ -412,6 +501,7 @@ function setupControls(media) {
     bgPopover.hidden = true;
     summonPanel.hidden = true;
     messagePopover.hidden = true;
+    stampPopover.hidden = true;
   };
 
   // 改行を空白へ変換し、最新の15文字だけを扱う。履歴やプロフィールには保存しない。
@@ -428,7 +518,9 @@ function setupControls(media) {
     messageBtn.classList.toggle("active", !!me.message);
     messageBtn.setAttribute(
       "aria-label",
-      me.message ? "ひとことメッセージ（表示中）" : "ひとことメッセージ"
+      me.message
+        ? "ひとことメッセージ（表示中、ショートカット: M）"
+        : "ひとことメッセージ（ショートカット: M）"
     );
   };
   const publishMessage = async () => {
@@ -439,8 +531,10 @@ function setupControls(media) {
       return;
     }
     try {
-      await update(meRef, { message: value, messageEventId: createMessageEventId() });
+      const messageEventId = createEventId();
+      await update(meRef, { message: value, messageEventId });
       me.message = value;
+      me.messageEventId = messageEventId;
       messageInput.value = value;
       syncMessageUI();
       messagePopover.hidden = true;
@@ -454,8 +548,9 @@ function setupControls(media) {
   const clearMessage = async () => {
     if (!me.message) return;
     try {
-      await update(meRef, { message: null });
+      await update(meRef, { message: null, messageEventId: null });
       me.message = "";
+      me.messageEventId = "";
       messageInput.value = "";
       syncMessageUI();
       messagePopover.hidden = true;
@@ -463,6 +558,45 @@ function setupControls(media) {
     } catch (e) {
       console.warn("メッセージ削除失敗:", e);
       toast("メッセージを削除できませんでした");
+    }
+  };
+  const openMessagePopover = () => {
+    closePopovers();
+    messageInput.value = me.message || "";
+    syncMessageUI();
+    messagePopover.hidden = false;
+    messageInput.focus();
+    messageInput.select();
+  };
+  const sentStampTimes = [];
+  let lastStampRateLimitToastAt = 0;
+  const publishStamp = async (type) => {
+    if (!Object.prototype.hasOwnProperty.call(STAMP_TYPES, type) || !meRef) return;
+    const now = Date.now();
+    while (sentStampTimes.length && now - sentStampTimes[0] >= 1000) sentStampTimes.shift();
+    if (sentStampTimes.length >= 8) {
+      if (now - lastStampRateLimitToastAt >= 1000) {
+        lastStampRateLimitToastAt = now;
+        toast("スタンプは1秒に8回まで送信できます");
+      }
+      return;
+    }
+    sentStampTimes.push(now);
+    const eventId = createEventId();
+    const eventRef = ref(
+      db,
+      `rooms/${ROOM}/players/${myId}/stampEvents/${eventId}`
+    );
+    try {
+      await set(eventRef, { type, ts: serverTimestamp() });
+      addStampAnimation(myId, type);
+      playNotificationChime("stamp");
+      setTimeout(() => {
+        remove(eventRef).catch((error) => console.warn("スタンプ削除失敗:", error));
+      }, 10000);
+    } catch (error) {
+      console.warn("スタンプ送信失敗:", error);
+      toast("スタンプを送信できませんでした");
     }
   };
 
@@ -595,13 +729,7 @@ function setupControls(media) {
   messageBtn.addEventListener("click", () => {
     const show = messagePopover.hidden;
     closePopovers();
-    if (show) {
-      messageInput.value = me.message || "";
-      syncMessageUI();
-      messagePopover.hidden = false;
-      messageInput.focus();
-      messageInput.select();
-    }
+    if (show) openMessagePopover();
   });
   messageInput.addEventListener("input", syncMessageUI);
   messageInput.addEventListener("keydown", (e) => {
@@ -612,6 +740,43 @@ function setupControls(media) {
   });
   messageSend.addEventListener("click", publishMessage);
   messageClear.addEventListener("click", clearMessage);
+  stampBtn.addEventListener("click", () => {
+    const show = stampPopover.hidden;
+    closePopovers();
+    if (show) {
+      stampPopover.hidden = false;
+      const firstOption = stampOptions[0];
+      if (firstOption) firstOption.focus();
+    }
+  });
+  stampOptions.forEach((option) => {
+    option.addEventListener("click", () => {
+      publishStamp(option.dataset.stamp);
+      noteHudActivity();
+    });
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      if (!messagePopover.hidden || !stampPopover.hidden) {
+        const returnFocus = !messagePopover.hidden ? messageBtn : stampBtn;
+        closePopovers();
+        returnFocus.focus();
+        event.preventDefault();
+      }
+      return;
+    }
+    if (
+      event.key.toLowerCase() === "m" &&
+      !event.repeat &&
+      !event.isComposing &&
+      !isEditableTarget(event.target) &&
+      !isBlockingOverlayOpen()
+    ) {
+      event.preventDefault();
+      openMessagePopover();
+      noteHudActivity();
+    }
+  });
 
   syncCamUI();
   syncMicUI();
@@ -622,67 +787,88 @@ function setupControls(media) {
 
 // ---- presence (Realtime Database) ----
 // 匿名サインインで uid が確定してから呼ぶ
-function initPresence() {
+function removeOtherPlayer(id) {
+  delete others[id];
+  seenMessageEventIds.delete(id);
+  seenStampEventIds.delete(id);
+  peersInChimeRange.delete(id);
+  lastProximityChimeAt.delete(id);
+  if (rtc) rtc.disconnectFrom(id);
+  removeVideo(id);
+}
+
+function processStampEvents(id, stampEvents) {
+  const previousEventIds = seenStampEventIds.get(id);
+  const currentEventIds = new Set();
+  if (stampEvents && typeof stampEvents === "object") {
+    const events = Object.entries(stampEvents).sort(
+      ([, a], [, b]) => Number(a && a.ts) - Number(b && b.ts)
+    );
+    for (const [eventId, event] of events) {
+      if (!event || !Object.prototype.hasOwnProperty.call(STAMP_TYPES, event.type)) continue;
+      currentEventIds.add(eventId);
+      // プレイヤーを初めて観測した時は既存イベントを再生せず、次回以降の追加だけを扱う。
+      if (previousEventIds && !previousEventIds.has(eventId)) {
+        addStampAnimation(id, event.type);
+        playNotificationChime("stamp");
+      }
+    }
+  }
+  seenStampEventIds.set(id, currentEventIds);
+}
+
+async function initPresence() {
   meRef = ref(db, `rooms/${ROOM}/players/${myId}`);
-  onDisconnect(meRef).remove(); // タブを閉じたら自動削除
   me.active = false;
   lastPublishedActive = false;
-  set(meRef, {
-    x: Math.round(me.x),
-    y: Math.round(me.y),
-    name: me.name,
-    color: me.color,
-    iconType: me.iconType || "preset",
-    iconId: me.iconId || "",
-    iconUrl: me.iconUrl || "",
-    announcing: false,
-    sharing: false,
-    active: false,
-    activeAt: Date.now(),
-    ts: Date.now(),
-  });
+  presenceInitialized = false;
+  seenMessageEventIds.clear();
+  seenStampEventIds.clear();
+  await onDisconnect(meRef).remove(); // タブを閉じたら自動削除
+  await set(meRef, currentPresencePayload());
 
   onValue(ref(db, `rooms/${ROOM}/players`), (snap) => {
     const all = snap.val() || {};
     let messageChanged = false;
+    const validOtherIds = new Set();
     for (const id in all) {
       if (id === myId) continue;
-      others[id] = all[id];
-      const eventId = all[id].messageEventId || "";
+      const player = normalizePlayer(id, all[id]);
+      if (!player) {
+        removeOtherPlayer(id);
+        continue;
+      }
+      validOtherIds.add(id);
+      others[id] = player;
+      const eventId = player.messageEventId || "";
       if (
         presenceInitialized &&
         eventId &&
         eventId !== seenMessageEventIds.get(id) &&
-        all[id].message
+        player.message
       ) {
         messageChanged = true;
       }
       seenMessageEventIds.set(id, eventId);
+      processStampEvents(id, player.stampEvents);
     }
     // 退出したプレイヤーを掃除
     for (const id in others) {
-      if (!all[id]) {
-        delete others[id];
-        seenMessageEventIds.delete(id);
-        peersInChimeRange.delete(id);
-        lastProximityChimeAt.delete(id);
-        if (rtc) rtc.disconnectFrom(id);
-        removeVideo(id);
-      }
+      if (!validOtherIds.has(id)) removeOtherPlayer(id);
     }
     // 集合（summon）の受信: 自分が対象なら集合地点へワープ
-    for (const id in all) {
-      if (id === myId) continue;
-      const s = all[id].summon;
+    for (const id of validOtherIds) {
+      const player = others[id];
+      const s = player.summon;
       if (s && Array.isArray(s.targets) && s.targets.includes(myId) && s.ts > lastSummonTs) {
         lastSummonTs = s.ts;
         if (slimeGame && slimeGame.isPlaying()) {
-          toast(`🎮 ゲーム中のため ${all[id].name || "誰か"} からの集合を見送りました`);
+          toast(`🎮 ゲーム中のため ${player.name} からの集合を見送りました`);
         } else {
           me.x = s.x;
           me.y = s.y;
           dirty = true;
-          toast(`📍 ${all[id].name || "誰か"} があなたを集合させました`);
+          toast(`📍 ${player.name} があなたを集合させました`);
         }
       }
     }
@@ -693,6 +879,15 @@ function initPresence() {
       presenceInitialized = true;
     }
     document.getElementById("status").textContent = `オンライン: ${Object.keys(all).length}人`;
+  });
+
+  if (presenceConnectionUnsubscribe) presenceConnectionUnsubscribe();
+  presenceConnectionUnsubscribe = onValue(ref(db, ".info/connected"), (snap) => {
+    if (snap.val() !== true || !meRef) return;
+    onDisconnect(meRef)
+      .remove()
+      .then(() => restorePresence())
+      .catch((error) => console.warn("切断時処理の再登録失敗:", error));
   });
 }
 
@@ -710,13 +905,28 @@ function flushPosition(now) {
 
 // ---- 入力 ----
 const keys = {};
+const MOVEMENT_KEYS = new Set(["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"]);
 addEventListener("keydown", (e) => {
-  if (slimeGame && slimeGame.isPlaying()) return;
-  keys[e.key.toLowerCase()] = true;
+  const key = e.key.toLowerCase();
+  if (
+    !MOVEMENT_KEYS.has(key) ||
+    e.isComposing ||
+    isEditableTarget(e.target) ||
+    (slimeGame && slimeGame.isPlaying())
+  ) {
+    return;
+  }
+  keys[key] = true;
+  if (key.startsWith("arrow")) e.preventDefault();
 });
 addEventListener("keyup", (e) => {
-  keys[e.key.toLowerCase()] = false;
+  const key = e.key.toLowerCase();
+  if (MOVEMENT_KEYS.has(key)) keys[key] = false;
 });
+document.addEventListener("focusin", (event) => {
+  if (isEditableTarget(event.target)) clearMovementInput();
+});
+window.addEventListener("blur", clearMovementInput);
 
 // ---- タッチ用バーチャルジョイスティック ----
 const joy = { active: false, dx: 0, dy: 0, cx: 0, cy: 0, r: 60 };
@@ -1096,6 +1306,48 @@ function drawMessageBubble(p, isMe) {
   ctx.restore();
 }
 
+function addStampAnimation(ownerId, type) {
+  const emoji = STAMP_TYPES[type];
+  if (!emoji) return;
+  activeStamps.push({
+    ownerId,
+    emoji,
+    angle: Math.random() * Math.PI * 2,
+    distance: 24 + Math.random() * 16,
+    startedAt: performance.now(),
+  });
+}
+
+function drawStampAnimations(now) {
+  for (let index = activeStamps.length - 1; index >= 0; index -= 1) {
+    const stamp = activeStamps[index];
+    const owner = stamp.ownerId === myId ? me : others[stamp.ownerId];
+    const elapsed = now - stamp.startedAt;
+    if (!owner || elapsed >= STAMP_DURATION_MS) {
+      activeStamps.splice(index, 1);
+      continue;
+    }
+    const progress = Math.max(0, elapsed / STAMP_DURATION_MS);
+    const appear = Math.min(1, progress / 0.18);
+    const settle = Math.min(1, Math.max(0, (progress - 0.18) / 0.2));
+    const scale = appear * (1.15 - settle * 0.15);
+    const alpha = progress <= 0.68 ? 1 : Math.max(0, (1 - progress) / 0.32);
+    const bounce = Math.sin(Math.min(1, progress / 0.3) * Math.PI) * 5;
+    const x = owner.x + Math.cos(stamp.angle) * stamp.distance;
+    const y = owner.y + Math.sin(stamp.angle) * stamp.distance - progress * 10 - bounce;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.font = `20px ${EMOJI_FONT}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(stamp.emoji, 0, 0);
+    ctx.restore();
+  }
+}
+
 function drawAvatar(p, isMe, connected) {
   const r = AVATAR_R;
   if (p.active) {
@@ -1150,7 +1402,8 @@ function drawAvatar(p, isMe, connected) {
 
   ctx.font = "bold 13px sans-serif";
   ctx.textAlign = "center";
-  const label = p.name + (isMe ? "（あなた）" : "");
+  const label =
+    safeDisplayName(p.name, isMe ? defaultName : "ゲスト") + (isMe ? "（あなた）" : "");
   ctx.lineWidth = 3;
   ctx.strokeStyle = "rgba(0,0,0,0.7)"; // 明るい背景でも読めるよう縁取り
   ctx.strokeText(label, p.x, p.y - r - 8);
@@ -1255,6 +1508,7 @@ function render() {
     drawAvatar(others[id], false, !!diag && diag.conn === "connected");
   }
   drawAvatar(me, true, false);
+  drawStampAnimations(performance.now());
   // 吹き出しはアバターより後に描き、他のアイコンに隠れにくくする。
   for (const id in others) {
     drawMessageBubble(others[id], false);
@@ -1437,6 +1691,13 @@ function isEditableTarget(target) {
   );
 }
 
+function isBlockingOverlayOpen() {
+  return ["slime-game-modal", "crop-modal", "console"].some((id) => {
+    const element = document.getElementById(id);
+    return element && !element.hidden;
+  });
+}
+
 function finishSlimeGameSession() {
   document.body.classList.remove("game-open");
   lockedGamePosition = null;
@@ -1539,11 +1800,13 @@ function isHudPaused() {
   const bg = document.getElementById("bg-popover");
   const sp = document.getElementById("summon-panel");
   const mp = document.getElementById("message-popover");
+  const stamp = document.getElementById("stamp-popover");
   const cs = document.getElementById("console");
   return (
     (bg && !bg.hidden) ||
     (sp && !sp.hidden) ||
     (mp && !mp.hidden) ||
+    (stamp && !stamp.hidden) ||
     (cs && !cs.hidden) ||
     (slimeGame && slimeGame.isPlaying()) ||
     isControlTooltipInteractionActive()
@@ -1634,7 +1897,7 @@ async function start() {
   // サインインは起動時の認証フロー（initAuthFlow）で完了済み＝myId は確定している。
 
   // 2) presence 開始
-  initPresence();
+  await initPresence();
 
   // 3) メディア（カメラ/マイク/背景効果）を起動。送出ストリーム＝加工後の映像＋マイク
   media = new MediaController();
@@ -1783,8 +2046,15 @@ async function copyInvite() {
 // 退出: 在席削除・全切断・メディア停止のうえ、クエリ/ハッシュを消してロビーへ戻す（完全リセット）
 async function leaveRoom() {
   if (slimeGame && slimeGame.isPlaying()) slimeGame.cancel();
+  communicationReady = false;
+  const leavingPresenceRef = meRef;
+  meRef = null;
+  if (presenceConnectionUnsubscribe) {
+    presenceConnectionUnsubscribe();
+    presenceConnectionUnsubscribe = null;
+  }
   try {
-    if (meRef) await remove(meRef);
+    if (leavingPresenceRef) await remove(leavingPresenceRef);
   } catch (_) {}
   try {
     if (rtc) rtc.disconnectAll();
