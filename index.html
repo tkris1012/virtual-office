@@ -94,7 +94,8 @@
     <button id="btn-bg" class="ctrl" type="button" aria-label="背景" data-help="ぼかし・バーチャル背景を設定"><i class="ti ti-wallpaper" aria-hidden="true"></i></button>
     <button id="btn-announce" class="ctrl" type="button" aria-label="アナウンス" data-help="ルーム全員へ音声を配信"><i class="ti ti-speakerphone" aria-hidden="true"></i></button>
     <button id="btn-summon" class="ctrl" type="button" aria-label="集合" data-help="選択したメンバーを自分の場所へ呼ぶ"><i class="ti ti-users" aria-hidden="true"></i></button>
-    <button id="btn-message" class="ctrl" type="button" aria-label="ひとことメッセージ" data-help="アバター上に短いメッセージを表示"><i class="ti ti-message-circle" aria-hidden="true"></i></button>
+    <button id="btn-message" class="ctrl" type="button" aria-label="ひとことメッセージ（ショートカット: M）" aria-keyshortcuts="M" data-help="アバター上に短いメッセージを表示（M）"><i class="ti ti-message-circle" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">M</span></button>
+    <button id="btn-stamp" class="ctrl" type="button" aria-label="スタンプ" data-help="アバターの周りにリアクションを表示"><i class="ti ti-mood-smile" aria-hidden="true"></i></button>
     <button id="btn-invite" class="ctrl" type="button" aria-label="招待リンク" data-help="合言葉入りの招待URLをコピー"><i class="ti ti-link" aria-hidden="true"></i></button>
     <button id="btn-settings" class="ctrl" type="button" aria-label="プロフィール設定" data-help="表示名やアイコンを変更"><i class="ti ti-settings" aria-hidden="true"></i></button>
     <button id="btn-leave" class="ctrl" type="button" aria-label="退出" data-help="現在のルームから退出"><i class="ti ti-logout" aria-hidden="true"></i></button>
@@ -140,6 +141,19 @@
     <div class="message-actions">
       <button id="message-clear" class="ctrl-text danger" type="button">削除</button>
       <button id="message-send" class="ctrl-text primary" type="button">表示する</button>
+    </div>
+  </div>
+
+  <!-- スタンプ（短時間だけ表示するリアクション） -->
+  <div id="stamp-popover" class="popover" role="dialog" aria-label="スタンプを選択" hidden>
+    <div class="stamp-title">スタンプ</div>
+    <div class="stamp-grid">
+      <button class="stamp-option" type="button" data-stamp="like" aria-label="いいね"><span aria-hidden="true">👍</span><small>いいね</small></button>
+      <button class="stamp-option" type="button" data-stamp="clap" aria-label="拍手"><span aria-hidden="true">👏</span><small>拍手</small></button>
+      <button class="stamp-option" type="button" data-stamp="party" aria-label="お祝い"><span aria-hidden="true">🎉</span><small>お祝い</small></button>
+      <button class="stamp-option" type="button" data-stamp="heart" aria-label="感謝"><span aria-hidden="true">❤️</span><small>感謝</small></button>
+      <button class="stamp-option" type="button" data-stamp="laugh" aria-label="笑い"><span aria-hidden="true">😂</span><small>笑い</small></button>
+      <button class="stamp-option" type="button" data-stamp="sad" aria-label="悲しい"><span aria-hidden="true">😢</span><small>悲しい</small></button>
     </div>
   </div>
 
