@@ -44,3 +44,24 @@ python -m http.server 8000
 ## CI
 
 PR を出すと GitHub Actions（`.github/workflows/ci.yml`）が走り、JavaScript の構文チェックと JSON の妥当性チェックを行います。認証/ルール/TURN/CI に関わるファイルを変更した PR には警告が付きます。
+
+## コラボレーター（Write 権限あり）の運用ルール
+
+Write 権限を持つメンバーも、**`main` への直接 push は禁止**です。必ず以下を守ってください。
+
+1. 作業は**ブランチを切って**行う（`feature/...` や `fix/...`）
+2. `main` 宛に **Pull Request** を出す
+3. **CI（`validate`）通過** ＋ **オーナー(@tkris1012)のレビュー承認**を得てからマージ
+4. マージ後、`database.rules.json` を変更した場合は Firebase 側でルールを再公開する
+
+この運用は `main` の**ブランチ保護**で強制されています（下記）。Write 権限は「fork 不要でブランチを直接 push できる」利便のためのもので、レビューを飛ばす目的ではありません。
+
+### main のブランチ保護（設定内容）
+
+`main` には以下を有効化しています（Settings → Branches / Rules）。
+
+- Require a pull request before merging（直接 push 禁止）
+  - Require approvals: 1 以上
+  - Require review from Code Owners（`.github/CODEOWNERS`）
+- Require status checks to pass: `validate`（CI）
+- （推奨）Do not allow bypassing the above settings
