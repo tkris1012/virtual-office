@@ -7,7 +7,12 @@ import {
   get,
   set,
   update,
+  push,
+  query,
+  limitToLast,
   onValue,
+  onChildAdded,
+  onChildRemoved,
   onDisconnect,
   remove,
   serverTimestamp,
@@ -252,6 +257,17 @@ const STAMP_TYPES = Object.freeze({
   sad: "😢",
 });
 
+// ---- チャット（ルーム全体・毎朝5時にGitHub Actionsで全削除）----
+const CHAT_HISTORY_LIMIT = 200; // 表示・購読する最大件数（無料枠を圧迫しないよう間引く）
+const CHAT_MAX_LEN = 200; // 本文の最大文字数
+const CHAT_RATE_LIMIT_WINDOW_MS = 10000;
+const CHAT_RATE_LIMIT_MAX = 10; // 直近10秒で送れる上限（連投防止）
+let chatRef = null;
+let chatPanelOpen = false;
+let unreadChatCount = 0;
+const sentChatTimes = [];
+let lastChatRateLimitToastAt = 0;
+
 function ensureNotificationAudio() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) return null;
@@ -285,6 +301,11 @@ function scheduleChime(audio, kind) {
     tones = [
       { frequency: 784, offset: 0, duration: 0.06, type: "triangle", gain: 0.06 },
       { frequency: 1047, offset: 0.07, duration: 0.1, type: "triangle", gain: 0.06 },
+    ];
+  } else if (kind === "chat") {
+    tones = [
+      { frequency: 523, offset: 0, duration: 0.08, type: "sine", gain: 0.07 },
+      { frequency: 784, offset: 0.09, duration: 0.12, type: "sine", gain: 0.07 },
     ];
   } else {
     tones = [
@@ -506,6 +527,7 @@ function setupControls(media) {
   const summonBtn = document.getElementById("btn-summon");
   const messageBtn = document.getElementById("btn-message");
   const stampBtn = document.getElementById("btn-stamp");
+  const chatBtn = document.getElementById("btn-chat");
 
   const bgPopover = document.getElementById("bg-popover");
   const summonPanel = document.getElementById("summon-panel");
@@ -517,6 +539,10 @@ function setupControls(media) {
   const messageClear = document.getElementById("message-clear");
   const stampPopover = document.getElementById("stamp-popover");
   const stampOptions = stampPopover.querySelectorAll("[data-stamp]");
+  const chatBackdrop = document.getElementById("chat-backdrop");
+  const chatClose = document.getElementById("chat-close");
+  const chatForm = document.getElementById("chat-form");
+  const chatInput = document.getElementById("chat-input");
 
   const bgMode = document.getElementById("bg-mode");
   const blurRange = document.getElementById("blur-range");
@@ -793,12 +819,38 @@ function setupControls(media) {
       noteHudActivity();
     });
   });
+
+  // --- チャット（ルーム全体・毎朝5時に自動削除）---
+  chatBtn.addEventListener("click", () => {
+    closePopovers();
+    toggleChatPanel();
+    noteHudActivity();
+  });
+  chatClose.addEventListener("click", closeChatPanel);
+  chatBackdrop.addEventListener("click", closeChatPanel);
+  chatForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = chatInput.value;
+    if (!sanitizeChatText(text)) return;
+    chatInput.value = "";
+    noteHudActivity();
+    const ok = await sendChatMessage(text);
+    if (!ok) chatInput.value = text; // 失敗時は入力内容を復元
+    chatInput.focus();
+  });
+
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       if (!messagePopover.hidden || !stampPopover.hidden) {
         const returnFocus = !messagePopover.hidden ? messageBtn : stampBtn;
         closePopovers();
         returnFocus.focus();
+        event.preventDefault();
+        return;
+      }
+      if (chatPanelOpen) {
+        closeChatPanel();
+        chatBtn.focus();
         event.preventDefault();
       }
       return;
@@ -812,6 +864,17 @@ function setupControls(media) {
     ) {
       event.preventDefault();
       openMessagePopover();
+      noteHudActivity();
+    }
+    if (
+      event.key.toLowerCase() === "c" &&
+      !event.repeat &&
+      !event.isComposing &&
+      !isEditableTarget(event.target) &&
+      !isBlockingOverlayOpen(["chat-panel"])
+    ) {
+      event.preventDefault();
+      toggleChatPanel();
       noteHudActivity();
     }
   });
@@ -891,6 +954,221 @@ function processStampEvents(id, stampEvents) {
     }
   }
   seenStampEventIds.set(id, currentEventIds);
+}
+
+// ---- チャットの送受信・描画 ----
+function sanitizeChatText(value) {
+  return String(value || "")
+    .replace(/[\r\n\u2028\u2029]+/g, " ")
+    .trim()
+    .slice(0, CHAT_MAX_LEN);
+}
+
+function formatChatTime(ts) {
+  if (!Number.isFinite(ts)) return "";
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+// 送信者のアイコンは現在の在席情報から解決する（メッセージ自体にはアイコンを持たせない＝軽量）。
+// 退出済みなど在席が無い場合は名前の頭文字にフォールバック。
+function renderChatAvatar(container, uid, name) {
+  container.textContent = "";
+  container.style.background = "";
+  const player = uid === myId ? me : others[uid];
+  if (player && player.iconType === "upload" && player.iconUrl) {
+    const img = document.createElement("img");
+    img.src = player.iconUrl;
+    img.alt = "";
+    container.appendChild(img);
+    return;
+  }
+  const preset = player ? presetById(player.iconId) : null;
+  if (preset) {
+    container.style.background = preset.bg;
+    container.textContent = preset.emoji;
+  } else {
+    container.style.background = "#555b6e";
+    container.textContent = safeDisplayName(name, "?").slice(0, 1).toUpperCase();
+  }
+}
+
+function showChatEmptyState(list) {
+  const empty = document.createElement("div");
+  empty.className = "chat-empty";
+  empty.textContent = "まだメッセージはありません";
+  list.appendChild(empty);
+}
+
+function trimChatDom(list) {
+  while (list.children.length > CHAT_HISTORY_LIMIT) {
+    list.removeChild(list.firstChild);
+  }
+}
+
+function appendChatMessage(id, value) {
+  const list = document.getElementById("chat-messages");
+  if (!list || !value || typeof value.text !== "string") return;
+  const empty = list.querySelector(".chat-empty");
+  if (empty) empty.remove();
+
+  const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 60;
+  const isMe = value.uid === myId;
+
+  const row = document.createElement("div");
+  row.className = "chat-msg" + (isMe ? " me" : "");
+  row.dataset.msgId = id;
+
+  const avatar = document.createElement("div");
+  avatar.className = "chat-avatar";
+  renderChatAvatar(avatar, value.uid, value.name);
+
+  const body = document.createElement("div");
+  body.className = "chat-body";
+  const nameEl = document.createElement("span");
+  nameEl.className = "chat-name";
+  nameEl.textContent = safeDisplayName(value.name, "ゲスト");
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble";
+  bubble.textContent = value.text; // textContent のみ使用（HTML挿入なし＝XSS対策）
+  const timeEl = document.createElement("span");
+  timeEl.className = "chat-time";
+  timeEl.textContent = formatChatTime(value.ts);
+
+  body.append(nameEl, bubble, timeEl);
+  row.append(avatar, body);
+  list.appendChild(row);
+
+  trimChatDom(list);
+  if (nearBottom || isMe) list.scrollTop = list.scrollHeight;
+}
+
+function removeChatMessageDom(id) {
+  const list = document.getElementById("chat-messages");
+  if (!list) return;
+  const row = list.querySelector(`[data-msg-id="${CSS.escape(id)}"]`);
+  if (row) row.remove();
+  if (!list.children.length) showChatEmptyState(list);
+}
+
+function updateChatBadge() {
+  const badge = document.getElementById("chat-badge");
+  if (!badge) return;
+  if (unreadChatCount > 0) {
+    badge.hidden = false;
+    badge.textContent = unreadChatCount > 99 ? "99+" : String(unreadChatCount);
+  } else {
+    badge.hidden = true;
+  }
+}
+
+function openChatPanel() {
+  chatPanelOpen = true;
+  document.getElementById("chat-backdrop").hidden = false;
+  const panel = document.getElementById("chat-panel");
+  panel.hidden = false;
+  panel.classList.add("closing");
+  requestAnimationFrame(() => panel.classList.remove("closing"));
+  unreadChatCount = 0;
+  updateChatBadge();
+  const list = document.getElementById("chat-messages");
+  if (list) list.scrollTop = list.scrollHeight;
+  const input = document.getElementById("chat-input");
+  if (input) input.focus();
+}
+
+function closeChatPanel() {
+  chatPanelOpen = false;
+  const panel = document.getElementById("chat-panel");
+  panel.classList.add("closing");
+  document.getElementById("chat-backdrop").hidden = true;
+  setTimeout(() => {
+    panel.hidden = true;
+    panel.classList.remove("closing");
+  }, 220);
+}
+
+function toggleChatPanel() {
+  if (chatPanelOpen) closeChatPanel();
+  else openChatPanel();
+}
+
+// 直近10秒に送れる件数を制限し、連投による書き込み過多を防ぐ（スタンプの連打対策と同じ考え方）。
+async function sendChatMessage(rawText) {
+  const value = sanitizeChatText(rawText);
+  if (!value || !chatRef || !myId) return false;
+
+  const now = Date.now();
+  while (sentChatTimes.length && now - sentChatTimes[0] >= CHAT_RATE_LIMIT_WINDOW_MS) {
+    sentChatTimes.shift();
+  }
+  if (sentChatTimes.length >= CHAT_RATE_LIMIT_MAX) {
+    if (now - lastChatRateLimitToastAt >= 2000) {
+      lastChatRateLimitToastAt = now;
+      toast("メッセージの送信が速すぎます。少し待ってから送ってください");
+    }
+    return false;
+  }
+  sentChatTimes.push(now);
+
+  try {
+    const msgRef = push(chatRef);
+    await set(msgRef, {
+      uid: myId,
+      name: safeDisplayName(me.name, defaultName),
+      text: value,
+      ts: serverTimestamp(),
+    });
+    return true;
+  } catch (e) {
+    console.warn("チャット送信失敗:", e);
+    toast("メッセージを送信できませんでした");
+    return false;
+  }
+}
+
+// 初回は get() で直近分をまとめて取得してから onChildAdded を張る。
+// 順序を保証することで「既存メッセージの再生分」と「本当に新着のメッセージ」を確実に区別できる
+// （先に onChildAdded だけを張ると、初回リプレイと get() の取得が競合し二重描画/誤通知の恐れがある）。
+async function initChatSync() {
+  chatRef = ref(db, `rooms/${ROOM}/chat`);
+  const list = document.getElementById("chat-messages");
+  if (list) list.innerHTML = "";
+
+  let initial = {};
+  try {
+    const snap = await get(query(chatRef, limitToLast(CHAT_HISTORY_LIMIT)));
+    initial = snap.val() || {};
+  } catch (e) {
+    console.warn("チャット履歴の取得失敗:", e);
+  }
+
+  const entries = Object.entries(initial).sort(
+    ([, a], [, b]) => Number(a && a.ts) - Number(b && b.ts)
+  );
+  for (const [id, value] of entries) appendChatMessage(id, value);
+  if (!entries.length && list) showChatEmptyState(list);
+  if (list) list.scrollTop = list.scrollHeight;
+
+  const seenIds = new Set(entries.map(([id]) => id));
+
+  onChildAdded(query(chatRef, limitToLast(CHAT_HISTORY_LIMIT)), (snap) => {
+    if (seenIds.has(snap.key)) {
+      seenIds.delete(snap.key); // 初回取得分の再生（同じ内容なので描画済み扱い）
+      return;
+    }
+    const value = snap.val();
+    appendChatMessage(snap.key, value);
+    if (value && value.uid !== myId) {
+      playNotificationChime("chat");
+      if (!chatPanelOpen) {
+        unreadChatCount += 1;
+        updateChatBadge();
+      }
+    }
+  });
+
+  onChildRemoved(chatRef, (snap) => removeChatMessageDom(snap.key));
 }
 
 async function initPresence() {
@@ -1780,8 +2058,9 @@ function isEditableTarget(target) {
   );
 }
 
-function isBlockingOverlayOpen() {
-  return ["slime-game-modal", "crop-modal", "console"].some((id) => {
+function isBlockingOverlayOpen(excludeIds = []) {
+  return ["slime-game-modal", "crop-modal", "console", "chat-panel"].some((id) => {
+    if (excludeIds.includes(id)) return false;
     const element = document.getElementById(id);
     return element && !element.hidden;
   });
@@ -1891,12 +2170,14 @@ function isHudPaused() {
   const mp = document.getElementById("message-popover");
   const stamp = document.getElementById("stamp-popover");
   const cs = document.getElementById("console");
+  const cp = document.getElementById("chat-panel");
   return (
     (bg && !bg.hidden) ||
     (sp && !sp.hidden) ||
     (mp && !mp.hidden) ||
     (stamp && !stamp.hidden) ||
     (cs && !cs.hidden) ||
+    (cp && !cp.hidden) ||
     (slimeGame && slimeGame.isPlaying()) ||
     isControlTooltipInteractionActive()
   );
@@ -2008,6 +2289,7 @@ async function start() {
   }
   makeTile("__me__", me.name + "（あなた）", stream, true, true);
   setupControls(media);
+  initChatSync().catch((e) => console.warn("チャット初期化失敗:", e));
 
   // 4) WebRTC マネージャ（iceServers は起動時に一度だけ解決＝Metered動的取得も反映）
   const iceServers = await getIceServers();
