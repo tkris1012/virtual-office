@@ -1900,8 +1900,20 @@ function showHud() {
   document.body.classList.remove("hud-hidden");
   lastHudActivity = performance.now();
 }
+function cancelTransientHudOperations() {
+  const activeElement = document.activeElement;
+  let shouldBlur = false;
+  for (const id of ["stamp-popover", "message-popover", "summon-panel"]) {
+    const panel = document.getElementById(id);
+    if (!panel || panel.hidden) continue;
+    if (activeElement && panel.contains(activeElement)) shouldBlur = true;
+    panel.hidden = true;
+  }
+  if (shouldBlur && activeElement instanceof HTMLElement) activeElement.blur();
+}
 function hideHud() {
   hudVisible = false;
+  cancelTransientHudOperations();
   hideControlTooltip(true);
   document.body.classList.add("hud-hidden");
 }
