@@ -538,7 +538,7 @@ function setupControls(media) {
   const messageSend = document.getElementById("message-send");
   const messageClear = document.getElementById("message-clear");
   const stampPopover = document.getElementById("stamp-popover");
-  const stampOptions = stampPopover.querySelectorAll("[data-stamp]");
+  const stampOptions = [...stampPopover.querySelectorAll("[data-stamp]")];
   const chatBackdrop = document.getElementById("chat-backdrop");
   const chatClose = document.getElementById("chat-close");
   const chatForm = document.getElementById("chat-form");
@@ -625,6 +625,12 @@ function setupControls(media) {
     messagePopover.hidden = false;
     messageInput.focus();
     messageInput.select();
+  };
+  const openStampPopover = () => {
+    closePopovers();
+    stampPopover.hidden = false;
+    const firstOption = stampOptions[0];
+    if (firstOption) firstOption.focus();
   };
   const sentStampTimes = [];
   let lastStampRateLimitToastAt = 0;
@@ -807,11 +813,7 @@ function setupControls(media) {
   stampBtn.addEventListener("click", () => {
     const show = stampPopover.hidden;
     closePopovers();
-    if (show) {
-      stampPopover.hidden = false;
-      const firstOption = stampOptions[0];
-      if (firstOption) firstOption.focus();
-    }
+    if (show) openStampPopover();
   });
   stampOptions.forEach((option) => {
     option.addEventListener("click", () => {
@@ -855,8 +857,38 @@ function setupControls(media) {
       }
       return;
     }
+    const shortcutKey = event.key.toLowerCase();
     if (
-      event.key.toLowerCase() === "m" &&
+      !stampPopover.hidden &&
+      !event.repeat &&
+      !event.isComposing &&
+      !isEditableTarget(event.target) &&
+      !isBlockingOverlayOpen()
+    ) {
+      const stampOption = stampOptions.find(
+        (option) => option.dataset.shortcut === shortcutKey
+      );
+      if (stampOption) {
+        event.preventDefault();
+        stampOption.focus();
+        stampOption.click();
+        return;
+      }
+    }
+    if (
+      shortcutKey === "e" &&
+      !event.repeat &&
+      !event.isComposing &&
+      !isEditableTarget(event.target) &&
+      !isBlockingOverlayOpen()
+    ) {
+      event.preventDefault();
+      openStampPopover();
+      noteHudActivity();
+      return;
+    }
+    if (
+      shortcutKey === "m" &&
       !event.repeat &&
       !event.isComposing &&
       !isEditableTarget(event.target) &&
@@ -867,7 +899,7 @@ function setupControls(media) {
       noteHudActivity();
     }
     if (
-      event.key.toLowerCase() === "c" &&
+      shortcutKey === "c" &&
       !event.repeat &&
       !event.isComposing &&
       !isEditableTarget(event.target) &&
@@ -2147,9 +2179,12 @@ function setupSlimeGame() {
   playButton.addEventListener("click", startSlimeGame);
   addEventListener("keydown", (event) => {
     if (
-      event.key.toLowerCase() === "e" &&
+      event.key.toLowerCase() === "g" &&
       gameState === GAME_STATES.READY &&
-      !isEditableTarget(event.target)
+      !event.repeat &&
+      !event.isComposing &&
+      !isEditableTarget(event.target) &&
+      !isBlockingOverlayOpen()
     ) {
       event.preventDefault();
       startSlimeGame();

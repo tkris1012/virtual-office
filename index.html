@@ -95,7 +95,7 @@
     <button id="btn-announce" class="ctrl" type="button" aria-label="アナウンス" data-help="ルーム全員へ音声を配信"><i class="ti ti-speakerphone" aria-hidden="true"></i></button>
     <button id="btn-summon" class="ctrl" type="button" aria-label="集合" data-help="選択したメンバーを自分の場所へ呼ぶ"><i class="ti ti-users" aria-hidden="true"></i></button>
     <button id="btn-message" class="ctrl" type="button" aria-label="ひとことメッセージ（ショートカット: M）" aria-keyshortcuts="M" data-help="アバター上に短いメッセージを表示（M）"><i class="ti ti-message-circle" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">M</span></button>
-    <button id="btn-stamp" class="ctrl" type="button" aria-label="スタンプ" data-help="アバターの周りにリアクションを表示"><i class="ti ti-mood-smile" aria-hidden="true"></i></button>
+    <button id="btn-stamp" class="ctrl" type="button" aria-label="スタンプ（ショートカット: E）" aria-keyshortcuts="E" data-help="アバターの周りにリアクションを表示（E）"><i class="ti ti-mood-smile" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">E</span></button>
     <button id="btn-chat" class="ctrl" type="button" aria-label="チャット（ショートカット: C）" aria-keyshortcuts="C" data-help="ルーム全体のチャットを開く（C）"><i class="ti ti-messages" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">C</span><span id="chat-badge" class="chat-badge" hidden>0</span></button>
     <button id="btn-invite" class="ctrl" type="button" aria-label="招待リンク" data-help="合言葉入りの招待URLをコピー"><i class="ti ti-link" aria-hidden="true"></i></button>
     <button id="btn-settings" class="ctrl" type="button" aria-label="プロフィール設定" data-help="表示名やアイコンを変更"><i class="ti ti-settings" aria-hidden="true"></i></button>
@@ -149,12 +149,12 @@
   <div id="stamp-popover" class="popover" role="dialog" aria-label="スタンプを選択" hidden>
     <div class="stamp-title">スタンプ</div>
     <div class="stamp-grid">
-      <button class="stamp-option" type="button" data-stamp="like" aria-label="いいね"><span aria-hidden="true">👍</span><small>いいね</small></button>
-      <button class="stamp-option" type="button" data-stamp="clap" aria-label="拍手"><span aria-hidden="true">👏</span><small>拍手</small></button>
-      <button class="stamp-option" type="button" data-stamp="party" aria-label="お祝い"><span aria-hidden="true">🎉</span><small>お祝い</small></button>
-      <button class="stamp-option" type="button" data-stamp="heart" aria-label="感謝"><span aria-hidden="true">❤️</span><small>感謝</small></button>
-      <button class="stamp-option" type="button" data-stamp="laugh" aria-label="笑い"><span aria-hidden="true">😂</span><small>笑い</small></button>
-      <button class="stamp-option" type="button" data-stamp="sad" aria-label="悲しい"><span aria-hidden="true">😢</span><small>悲しい</small></button>
+      <button class="stamp-option" type="button" data-stamp="like" data-shortcut="1" aria-label="いいね（ショートカット: 1）" aria-keyshortcuts="1"><kbd class="stamp-shortcut" aria-hidden="true">1</kbd><span class="stamp-emoji" aria-hidden="true">👍</span><small>いいね</small></button>
+      <button class="stamp-option" type="button" data-stamp="clap" data-shortcut="2" aria-label="拍手（ショートカット: 2）" aria-keyshortcuts="2"><kbd class="stamp-shortcut" aria-hidden="true">2</kbd><span class="stamp-emoji" aria-hidden="true">👏</span><small>拍手</small></button>
+      <button class="stamp-option" type="button" data-stamp="party" data-shortcut="3" aria-label="お祝い（ショートカット: 3）" aria-keyshortcuts="3"><kbd class="stamp-shortcut" aria-hidden="true">3</kbd><span class="stamp-emoji" aria-hidden="true">🎉</span><small>お祝い</small></button>
+      <button class="stamp-option" type="button" data-stamp="heart" data-shortcut="4" aria-label="感謝（ショートカット: 4）" aria-keyshortcuts="4"><kbd class="stamp-shortcut" aria-hidden="true">4</kbd><span class="stamp-emoji" aria-hidden="true">❤️</span><small>感謝</small></button>
+      <button class="stamp-option" type="button" data-stamp="laugh" data-shortcut="5" aria-label="笑い（ショートカット: 5）" aria-keyshortcuts="5"><kbd class="stamp-shortcut" aria-hidden="true">5</kbd><span class="stamp-emoji" aria-hidden="true">😂</span><small>笑い</small></button>
+      <button class="stamp-option" type="button" data-stamp="sad" data-shortcut="6" aria-label="悲しい（ショートカット: 6）" aria-keyshortcuts="6"><kbd class="stamp-shortcut" aria-hidden="true">6</kbd><span class="stamp-emoji" aria-hidden="true">😢</span><small>悲しい</small></button>
     </div>
   </div>
 
@@ -180,8 +180,8 @@
       <strong>🎮 スライムたたき</strong>
       <span>ゲームコーナーで遊べます</span>
     </div>
-    <span class="game-prompt-key">Eキー</span>
-    <button id="game-play" type="button">プレイ</button>
+    <span class="game-prompt-key">Gキー</span>
+    <button id="game-play" type="button" aria-keyshortcuts="G">プレイ</button>
   </div>
 
   <!-- スライムゲーム（通話・映像は背後で継続） -->
