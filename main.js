@@ -1909,7 +1909,7 @@ function showHud() {
 function cancelTransientHudOperations() {
   const activeElement = document.activeElement;
   let shouldBlur = false;
-  for (const id of ["stamp-popover", "message-popover", "summon-panel"]) {
+  for (const id of ["bg-popover", "stamp-popover", "message-popover", "summon-panel"]) {
     const panel = document.getElementById(id);
     if (!panel || panel.hidden) continue;
     if (activeElement && panel.contains(activeElement)) shouldBlur = true;
