@@ -894,6 +894,13 @@ body.game-open #joystick {
   font-weight: 700;
   border-bottom: 0.5px solid var(--panel-border);
 }
+.chat-notice {
+  margin: 0;
+  padding: 6px 18px;
+  color: #6f7a90;
+  font-size: 11px;
+  border-bottom: 0.5px solid var(--panel-border);
+}
 .chat-messages {
   flex: 1;
   overflow-y: auto;
