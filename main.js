@@ -765,9 +765,15 @@ function setupControls(media) {
   });
   messageInput.addEventListener("input", syncMessageUI);
   messageInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !e.isComposing) {
       e.preventDefault();
-      publishMessage();
+      if (normalizeMessage(messageInput.value)) {
+        publishMessage();
+      } else if (me.message) {
+        clearMessage();
+      } else {
+        messagePopover.hidden = true;
+      }
     }
   });
   messageSend.addEventListener("click", publishMessage);
