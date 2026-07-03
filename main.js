@@ -38,6 +38,10 @@ const CALL_RADIUS = 30; // この距離以内で通話開始（旧120）
 const HANGUP_RADIUS = 48; // この距離を超えたら切断（ヒステリシスでバタつき防止・旧175）
 const FULL_VOLUME_RADIUS = 12; // この距離以内なら最大音量（以遠は離れるほど小さく・旧45）
 const PROXIMITY_CHIME_COOLDOWN_MS = 5000; // 境界付近の往復による連続通知を防ぐ
+const PRESENCE_HEARTBEAT_INTERVAL_MS = 45_000;
+const PRESENCE_STALE_AFTER_MS = 3 * 60_000;
+const PRESENCE_SWEEP_INTERVAL_MS = 15_000;
+const PRESENCE_FUTURE_TOLERANCE_MS = 60_000;
 const SPEED = 3.2;
 
 // ---- 自分 ----
@@ -228,6 +232,11 @@ let communicationReady = false;
 let lastPublishedActive = null;
 let presenceInitialized = false;
 let presenceConnectionUnsubscribe = null;
+let presencePlayersUnsubscribe = null;
+let presenceServerTimeOffsetUnsubscribe = null;
+let presenceHeartbeatTimer = null;
+let presenceSweepTimer = null;
+let presenceServerTimeOffset = 0;
 const seenMessageEventIds = new Map();
 const seenStampEventIds = new Map();
 const peersInChimeRange = new Set();
@@ -345,6 +354,24 @@ function normalizePlayer(id, value) {
   };
 }
 
+function presenceServerNow() {
+  return Date.now() + presenceServerTimeOffset;
+}
+
+function lastPresenceAt(player) {
+  return Math.max(
+    Number.isFinite(player && player.heartbeatAt) ? player.heartbeatAt : 0,
+    Number.isFinite(player && player.ts) ? player.ts : 0,
+    Number.isFinite(player && player.activeAt) ? player.activeAt : 0
+  );
+}
+
+function isPresenceFresh(player, now = presenceServerNow()) {
+  const lastSeenAt = lastPresenceAt(player);
+  if (!lastSeenAt || lastSeenAt > now + PRESENCE_FUTURE_TOLERANCE_MS) return false;
+  return now - lastSeenAt <= PRESENCE_STALE_AFTER_MS;
+}
+
 function isAppActive() {
   return communicationReady && document.visibilityState === "visible" && document.hasFocus();
 }
@@ -364,8 +391,9 @@ function currentPresencePayload() {
     message: me.message || null,
     messageEventId: me.message ? me.messageEventId || null : null,
     active,
-    activeAt: Date.now(),
-    ts: Date.now(),
+    activeAt: serverTimestamp(),
+    heartbeatAt: serverTimestamp(),
+    ts: serverTimestamp(),
   };
 }
 
@@ -385,7 +413,11 @@ function syncActivePresence() {
   me.active = active;
   if (!meRef || lastPublishedActive === active) return;
   lastPublishedActive = active;
-  update(meRef, { active, activeAt: Date.now() }).catch(() => {
+  update(meRef, {
+    active,
+    activeAt: serverTimestamp(),
+    heartbeatAt: serverTimestamp(),
+  }).catch(() => {
     if (lastPublishedActive === active) lastPublishedActive = null;
   });
 }
@@ -797,6 +829,44 @@ function removeOtherPlayer(id) {
   removeVideo(id);
 }
 
+function updateOnlineStatus() {
+  const onlineCount = (meRef ? 1 : 0) + Object.keys(others).length;
+  document.getElementById("status").textContent = `オンライン: ${onlineCount}人`;
+}
+
+function pruneStalePlayers() {
+  const now = presenceServerNow();
+  let removed = false;
+  for (const id in others) {
+    if (isPresenceFresh(others[id], now)) continue;
+    removeOtherPlayer(id);
+    removed = true;
+  }
+  if (removed) updateOnlineStatus();
+}
+
+function publishPresenceHeartbeat() {
+  if (!meRef) return;
+  update(meRef, { heartbeatAt: serverTimestamp() }).catch(() => {});
+}
+
+function startPresenceTimers() {
+  if (presenceHeartbeatTimer) clearInterval(presenceHeartbeatTimer);
+  if (presenceSweepTimer) clearInterval(presenceSweepTimer);
+  presenceHeartbeatTimer = setInterval(
+    publishPresenceHeartbeat,
+    PRESENCE_HEARTBEAT_INTERVAL_MS
+  );
+  presenceSweepTimer = setInterval(pruneStalePlayers, PRESENCE_SWEEP_INTERVAL_MS);
+}
+
+function stopPresenceTimers() {
+  if (presenceHeartbeatTimer) clearInterval(presenceHeartbeatTimer);
+  if (presenceSweepTimer) clearInterval(presenceSweepTimer);
+  presenceHeartbeatTimer = null;
+  presenceSweepTimer = null;
+}
+
 function processStampEvents(id, stampEvents) {
   const previousEventIds = seenStampEventIds.get(id);
   const currentEventIds = new Set();
@@ -826,15 +896,28 @@ async function initPresence() {
   seenStampEventIds.clear();
   await onDisconnect(meRef).remove(); // タブを閉じたら自動削除
   await set(meRef, currentPresencePayload());
+  startPresenceTimers();
 
-  onValue(ref(db, `rooms/${ROOM}/players`), (snap) => {
+  if (presenceServerTimeOffsetUnsubscribe) presenceServerTimeOffsetUnsubscribe();
+  presenceServerTimeOffsetUnsubscribe = onValue(
+    ref(db, ".info/serverTimeOffset"),
+    (snap) => {
+      const offset = snap.val();
+      presenceServerTimeOffset = Number.isFinite(offset) ? offset : 0;
+      pruneStalePlayers();
+    }
+  );
+
+  if (presencePlayersUnsubscribe) presencePlayersUnsubscribe();
+  presencePlayersUnsubscribe = onValue(ref(db, `rooms/${ROOM}/players`), (snap) => {
     const all = snap.val() || {};
+    const now = presenceServerNow();
     let messageChanged = false;
     const validOtherIds = new Set();
     for (const id in all) {
       if (id === myId) continue;
       const player = normalizePlayer(id, all[id]);
-      if (!player) {
+      if (!player || !isPresenceFresh(player, now)) {
         removeOtherPlayer(id);
         continue;
       }
@@ -878,7 +961,7 @@ async function initPresence() {
       seedProximityChimeRange();
       presenceInitialized = true;
     }
-    document.getElementById("status").textContent = `オンライン: ${Object.keys(all).length}人`;
+    updateOnlineStatus();
   });
 
   if (presenceConnectionUnsubscribe) presenceConnectionUnsubscribe();
@@ -2047,11 +2130,20 @@ async function copyInvite() {
 async function leaveRoom() {
   if (slimeGame && slimeGame.isPlaying()) slimeGame.cancel();
   communicationReady = false;
+  stopPresenceTimers();
   const leavingPresenceRef = meRef;
   meRef = null;
+  if (presencePlayersUnsubscribe) {
+    presencePlayersUnsubscribe();
+    presencePlayersUnsubscribe = null;
+  }
   if (presenceConnectionUnsubscribe) {
     presenceConnectionUnsubscribe();
     presenceConnectionUnsubscribe = null;
+  }
+  if (presenceServerTimeOffsetUnsubscribe) {
+    presenceServerTimeOffsetUnsubscribe();
+    presenceServerTimeOffsetUnsubscribe = null;
   }
   try {
     if (leavingPresenceRef) await remove(leavingPresenceRef);
