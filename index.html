@@ -263,10 +263,12 @@
   <div id="chat-backdrop" hidden></div>
   <aside id="chat-panel" hidden>
     <div class="chat-head">
-      <span>チャット</span>
+      <div class="chat-head-text">
+        <span class="chat-title">チャット</span>
+        <p class="chat-notice">※履歴は毎朝5時にリセットされています。<br />個人情報の入力には十分注意して下さい。</p>
+      </div>
       <button id="chat-close" class="gear-btn" type="button" aria-label="閉じる"><i class="ti ti-x" aria-hidden="true"></i></button>
     </div>
-    <p class="chat-notice">毎朝5時に履歴がリセットされます</p>
     <div id="chat-messages" class="chat-messages"></div>
     <form id="chat-form" class="chat-form">
       <input id="chat-input" type="text" maxlength="200" placeholder="メッセージを入力" autocomplete="off" />
