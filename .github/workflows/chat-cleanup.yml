@@ -1,0 +1,29 @@
+name: Chat Cleanup
+
+# チャット履歴を毎朝 JST 5:00 に全削除する（GitHub Actions の cron は UTC 指定のため、
+# 前日 20:00 UTC = 翌日 05:00 JST として設定）。
+# 手動実行（workflow_dispatch）でも即時実行できる。
+on:
+  schedule:
+    - cron: "0 20 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: firebase-admin をインストール
+        run: npm install --no-save firebase-admin@12
+
+      - name: チャット履歴を削除
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          # databaseURL は firebase-config.js にも記載済みの公開情報のため secret 化は不要
+          FIREBASE_DATABASE_URL: "https://virtual-office-ec14d-default-rtdb.asia-southeast1.firebasedatabase.app"
+        run: node scripts/cleanup-chat.js

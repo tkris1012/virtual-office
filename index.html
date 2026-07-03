@@ -96,6 +96,7 @@
     <button id="btn-summon" class="ctrl" type="button" aria-label="集合" data-help="選択したメンバーを自分の場所へ呼ぶ"><i class="ti ti-users" aria-hidden="true"></i></button>
     <button id="btn-message" class="ctrl" type="button" aria-label="ひとことメッセージ（ショートカット: M）" aria-keyshortcuts="M" data-help="アバター上に短いメッセージを表示（M）"><i class="ti ti-message-circle" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">M</span></button>
     <button id="btn-stamp" class="ctrl" type="button" aria-label="スタンプ" data-help="アバターの周りにリアクションを表示"><i class="ti ti-mood-smile" aria-hidden="true"></i></button>
+    <button id="btn-chat" class="ctrl" type="button" aria-label="チャット（ショートカット: C）" aria-keyshortcuts="C" data-help="ルーム全体のチャットを開く（C）"><i class="ti ti-messages" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">C</span><span id="chat-badge" class="chat-badge" hidden>0</span></button>
     <button id="btn-invite" class="ctrl" type="button" aria-label="招待リンク" data-help="合言葉入りの招待URLをコピー"><i class="ti ti-link" aria-hidden="true"></i></button>
     <button id="btn-settings" class="ctrl" type="button" aria-label="プロフィール設定" data-help="表示名やアイコンを変更"><i class="ti ti-settings" aria-hidden="true"></i></button>
     <button id="btn-leave" class="ctrl" type="button" aria-label="退出" data-help="現在のルームから退出"><i class="ti ti-logout" aria-hidden="true"></i></button>
@@ -256,6 +257,20 @@
 
       <button id="console-logout" class="console-logout" type="button"><i class="ti ti-logout" aria-hidden="true"></i> ログアウト</button>
     </div>
+  </aside>
+
+  <!-- チャット（ルーム全体・毎朝5時に自動削除） -->
+  <div id="chat-backdrop" hidden></div>
+  <aside id="chat-panel" hidden>
+    <div class="chat-head">
+      <span>チャット</span>
+      <button id="chat-close" class="gear-btn" type="button" aria-label="閉じる"><i class="ti ti-x" aria-hidden="true"></i></button>
+    </div>
+    <div id="chat-messages" class="chat-messages"></div>
+    <form id="chat-form" class="chat-form">
+      <input id="chat-input" type="text" maxlength="200" placeholder="メッセージを入力" autocomplete="off" />
+      <button id="chat-send" class="ctrl-text" type="submit">送信</button>
+    </form>
   </aside>
 
   <!-- 画像の円形クロップ -->
