@@ -347,6 +347,7 @@ html, body {
   gap: 8px;
 }
 .stamp-option {
+  position: relative;
   min-width: 0;
   padding: 9px 4px 7px;
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -361,10 +362,24 @@ html, body {
   background: #35405a;
   outline: none;
 }
-.stamp-option span {
+.stamp-option .stamp-emoji {
   display: block;
   font-size: 25px;
   line-height: 1.2;
+}
+.stamp-shortcut {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 3px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 5px;
+  color: #dce5f7;
+  background: #20263a;
+  font: 700 10px/15px sans-serif;
+  text-align: center;
 }
 .stamp-option small {
   display: block;
