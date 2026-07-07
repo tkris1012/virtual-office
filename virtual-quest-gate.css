@@ -1,0 +1,237 @@
+/* ---- バーチャルクエスト入口 ---- */
+#virtual-quest-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: 92px;
+  z-index: 34;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 16px);
+  padding: 8px 10px 8px 14px;
+  color: #fff;
+  background: rgba(10, 25, 33, 0.95);
+  border: 1px solid rgba(98, 232, 216, 0.55);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transform: translateX(-50%);
+}
+#virtual-quest-prompt[hidden] { display: none; }
+.virtual-quest-prompt-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+}
+.virtual-quest-prompt-copy strong {
+  font-size: 13px;
+  line-height: 1.3;
+}
+.virtual-quest-prompt-copy span {
+  color: #b8d5d4;
+  font-size: 11px;
+}
+.virtual-quest-prompt-key {
+  padding: 3px 7px;
+  color: #c9dcdd;
+  font-size: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+}
+#virtual-quest-prompt button,
+.virtual-quest-depart {
+  border: 0;
+  color: #061f22;
+  background: #63e6d4;
+  font-weight: 700;
+  cursor: pointer;
+}
+#virtual-quest-prompt button {
+  padding: 8px 13px;
+  border-radius: 9px;
+}
+#virtual-quest-prompt button:hover,
+.virtual-quest-depart:hover { background: #82f1e2; }
+
+#virtual-quest-gate-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 52;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 110px 16px 16px;
+  background: rgba(5, 11, 16, 0.72);
+}
+#virtual-quest-gate-modal[hidden] { display: none; }
+.virtual-quest-card {
+  width: min(460px, 100%);
+  max-height: calc(100dvh - 126px);
+  overflow-y: auto;
+  padding: 16px;
+  color: var(--text);
+  background: #10222a;
+  border: 1px solid rgba(98, 232, 216, 0.38);
+  border-radius: 16px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.58);
+}
+.virtual-quest-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.virtual-quest-kicker {
+  color: #6ae9dc;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+.virtual-quest-head h2 {
+  margin: 2px 0 0;
+  color: #f1fffd;
+  font-size: 21px;
+  line-height: 1.2;
+}
+.virtual-quest-close {
+  display: grid;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  place-items: center;
+  color: #dbefef;
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.virtual-quest-close:hover { background: rgba(255, 255, 255, 0.16); }
+.virtual-quest-close .ti { font-size: 19px; }
+.virtual-quest-destinations {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+.virtual-quest-destination {
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+}
+.virtual-quest-destination.open {
+  background: rgba(99, 230, 212, 0.1);
+  border-color: rgba(99, 230, 212, 0.45);
+}
+.virtual-quest-destination.locked {
+  opacity: 0.58;
+}
+.virtual-quest-destination-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.virtual-quest-destination-top strong {
+  font-size: 14px;
+}
+.virtual-quest-destination-top span {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  color: #d7eeee;
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 999px;
+  font-size: 11px;
+}
+.virtual-quest-destination p {
+  margin: 7px 0 9px;
+  color: #b7cccc;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.virtual-quest-destination dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+}
+.virtual-quest-destination dl div {
+  min-width: 0;
+  padding: 7px 8px;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 7px;
+}
+.virtual-quest-destination dt {
+  color: #84c9c7;
+  font-size: 10px;
+}
+.virtual-quest-destination dd {
+  margin: 2px 0 0;
+  color: #fff;
+  font-size: 12px;
+}
+.virtual-quest-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 8px;
+}
+.virtual-quest-cancel,
+.virtual-quest-depart {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+.virtual-quest-cancel {
+  color: #d5e4e4;
+  background: #263640;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+}
+.virtual-quest-cancel:hover { background: #30444f; }
+.virtual-quest-depart:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+.virtual-quest-close:focus-visible,
+.virtual-quest-cancel:focus-visible,
+.virtual-quest-depart:focus-visible,
+#virtual-quest-prompt button:focus-visible {
+  outline: 3px solid rgba(126, 241, 226, 0.9);
+  outline-offset: 2px;
+}
+body.virtual-quest-open #videos {
+  z-index: 60;
+  opacity: 1;
+  pointer-events: auto;
+}
+body.virtual-quest-open #controls,
+body.virtual-quest-open #roompill,
+body.virtual-quest-open #joystick {
+  pointer-events: none;
+}
+
+@media (max-width: 600px) {
+  #virtual-quest-prompt {
+    bottom: 82px;
+  }
+  .virtual-quest-prompt-key { display: none; }
+  #virtual-quest-gate-modal {
+    padding: 96px 10px 10px;
+  }
+  .virtual-quest-card {
+    max-height: calc(100dvh - 106px);
+    padding: 13px;
+  }
+  .virtual-quest-destination dl {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-height: 620px) {
+  #virtual-quest-gate-modal {
+    padding-top: 84px;
+  }
+  .virtual-quest-card {
+    max-height: calc(100dvh - 94px);
+  }
+}

@@ -30,6 +30,7 @@ import { RTCManager, getIceServers, runIceTest } from "./rtc.js";
 import { MediaController } from "./media.js";
 import { PRESET_ICONS, presetById, defaultPresetIdFor, EMOJI_FONT } from "./avatars.js";
 import { SlimeGame } from "./slime-game.js";
+import { VirtualQuestGate } from "./virtual-quest-gate.js";
 
 // ---- 設定 ----
 const params = new URLSearchParams(location.search);
@@ -230,6 +231,7 @@ let gameState = GAME_STATES.OUTSIDE;
 let gameCooldownUntil = 0;
 let lockedGamePosition = null;
 let slimeGame = null;
+let virtualQuestGate = null;
 
 // ---- 通知音 / アクティブ状態 ----
 let notificationAudioContext = null;
@@ -1407,7 +1409,8 @@ addEventListener("keydown", (e) => {
     !MOVEMENT_KEYS.has(key) ||
     e.isComposing ||
     isEditableTarget(e.target) ||
-    (slimeGame && slimeGame.isPlaying())
+    (slimeGame && slimeGame.isPlaying()) ||
+    (virtualQuestGate && virtualQuestGate.isBlockingOverlayOpen())
   ) {
     return;
   }
@@ -1439,7 +1442,7 @@ function joyPoint(e) {
   return e;
 }
 function joyStart(e) {
-  if (slimeGame && slimeGame.isPlaying()) {
+  if ((slimeGame && slimeGame.isPlaying()) || (virtualQuestGate && virtualQuestGate.isBlockingOverlayOpen())) {
     e.preventDefault();
     return;
   }
@@ -1490,7 +1493,7 @@ if (joyEl) {
 }
 
 function step() {
-  if (slimeGame && slimeGame.isPlaying()) {
+  if ((slimeGame && slimeGame.isPlaying()) || (virtualQuestGate && virtualQuestGate.isBlockingOverlayOpen())) {
     if (lockedGamePosition) {
       me.x = lockedGamePosition.x;
       me.y = lockedGamePosition.y;
@@ -1971,6 +1974,7 @@ function drawZones() {
 }
 
 function render() {
+  const now = performance.now();
   // 画面クリア（スクリーン座標）
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = "#11131a";
@@ -1982,6 +1986,7 @@ function render() {
 
   drawFloor();
   drawZones();
+  if (virtualQuestGate) virtualQuestGate.draw(ctx, now);
 
   // 自分の通話範囲（部屋にいる時・アナウンス中は出さない）
   if (!zoneOf(me) && !announcing) {
@@ -2003,7 +2008,7 @@ function render() {
     drawAvatar(others[id], false, !!diag && diag.conn === "connected");
   }
   drawAvatar(me, true, false);
-  drawStampAnimations(performance.now());
+  drawStampAnimations(now);
   // 吹き出しはアバターより後に描き、他のアイコンに隠れにくくする。
   for (const id in others) {
     drawMessageBubble(others[id], false);
@@ -2187,7 +2192,7 @@ function isEditableTarget(target) {
 }
 
 function isBlockingOverlayOpen(excludeIds = []) {
-  return ["slime-game-modal", "crop-modal", "console", "chat-panel", "leave-confirm-dialog"].some((id) => {
+  return ["slime-game-modal", "virtual-quest-gate-modal", "crop-modal", "console", "chat-panel", "leave-confirm-dialog"].some((id) => {
     if (excludeIds.includes(id)) return false;
     const element = document.getElementById(id);
     return element && !element.hidden;
@@ -2288,6 +2293,23 @@ function setupSlimeGame() {
   });
 }
 
+function setupVirtualQuestGate() {
+  virtualQuestGate = new VirtualQuestGate({
+    worldWidth: W,
+    worldHeight: H,
+    getPlayer: () => me,
+    clearMovementInput,
+    showHud,
+    toast,
+    canOpen: () => !isBlockingOverlayOpen(["virtual-quest-gate-modal"]),
+  });
+  virtualQuestGate.setup();
+
+  window.addEventListener("virtualquest:prepare-departure", (event) => {
+    console.info("バーチャルクエスト出発準備:", event.detail);
+  });
+}
+
 // ---- HUD 自動表示/非表示（無操作で隠す＋マップのタップ/クリックでトグル）----
 const HUD_AUTOHIDE_MS = 5000; // 無操作がこの時間続いたら自動非表示
 let hudVisible = true;
@@ -2301,6 +2323,7 @@ function isHudPaused() {
   const mp = document.getElementById("message-popover");
   const stamp = document.getElementById("stamp-popover");
   const leaveConfirm = document.getElementById("leave-confirm-dialog");
+  const questGate = document.getElementById("virtual-quest-gate-modal");
   const cs = document.getElementById("console");
   const cp = document.getElementById("chat-panel");
   return (
@@ -2309,6 +2332,7 @@ function isHudPaused() {
     (mp && !mp.hidden) ||
     (stamp && !stamp.hidden) ||
     (leaveConfirm && !leaveConfirm.hidden) ||
+    (questGate && !questGate.hidden) ||
     (cs && !cs.hidden) ||
     (cp && !cp.hidden) ||
     (slimeGame && slimeGame.isPlaying()) ||
@@ -2323,6 +2347,10 @@ function showHud() {
 function cancelTransientHudOperations() {
   const activeElement = document.activeElement;
   let shouldBlur = false;
+  if (virtualQuestGate && virtualQuestGate.isBlockingOverlayOpen()) {
+    virtualQuestGate.closeModal();
+    shouldBlur = true;
+  }
   for (const id of ["bg-popover", "stamp-popover", "message-popover", "summon-panel"]) {
     const panel = document.getElementById(id);
     if (!panel || panel.hidden) continue;
@@ -2395,6 +2423,7 @@ function loop(now) {
   const t = now || performance.now();
   step();
   updateGameArea(t);
+  if (virtualQuestGate) virtualQuestGate.update(t);
   flushPosition(t);
   updateProximityChimes();
   updateConnections();
@@ -3325,6 +3354,7 @@ function initAuthFlow() {
 // ---- 起動の振り分け ----
 setupControlTooltips();
 setupSlimeGame();
+setupVirtualQuestGate();
 
 if (ICETEST) {
   document.getElementById("signin").hidden = true;
