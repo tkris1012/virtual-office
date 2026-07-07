@@ -169,6 +169,55 @@
   color: #fff;
   font-size: 12px;
 }
+.virtual-quest-participants {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.virtual-quest-participants-title {
+  color: #84c9c7;
+  font-size: 10px;
+  font-weight: 700;
+}
+.virtual-quest-participant {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.virtual-quest-participant-icon {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+}
+.virtual-quest-participant-icon img,
+.virtual-quest-participant-icon span {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  object-fit: cover;
+  font-size: 16px;
+}
+.virtual-quest-participant-name,
+.virtual-quest-empty {
+  min-width: 0;
+  color: #e8f6f5;
+  font-size: 12px;
+}
+.virtual-quest-participant-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.virtual-quest-empty {
+  color: #8ba7a7;
+}
 .virtual-quest-actions {
   display: grid;
   grid-template-columns: 1fr 1.35fr;

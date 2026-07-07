@@ -49,21 +49,42 @@ function roundedRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export class VirtualQuestGate {
-  constructor({ worldWidth, worldHeight, getPlayer, clearMovementInput, showHud, toast, canOpen }) {
+  constructor({
+    worldWidth,
+    worldHeight,
+    getPlayer,
+    getDestinationParticipants,
+    clearMovementInput,
+    showHud,
+    toast,
+    canOpen,
+  }) {
     this.worldWidth = worldWidth;
     this.worldHeight = worldHeight;
     this.getPlayer = getPlayer;
+    this.getDestinationParticipants = getDestinationParticipants || (() => ({}));
     this.clearMovementInput = clearMovementInput;
     this.showHud = showHud;
     this.toast = toast;
     this.canOpen = canOpen || (() => true);
     this.prompt = null;
     this.modal = null;
+    this.destinationsEl = null;
     this.departButton = null;
     this.closeButton = null;
     this.cancelButton = null;
     this.destination = DESTINATIONS[0];
+    this.destinationParticipants = {};
   }
 
   setup() {
@@ -174,6 +195,7 @@ export class VirtualQuestGate {
   openModal() {
     if (!this.modal) return;
     if (!this.canOpen()) return;
+    this.setDestinationParticipants(this.getDestinationParticipants());
     this.clearMovementInput();
     this.prompt.hidden = true;
     this.modal.hidden = false;
@@ -189,6 +211,11 @@ export class VirtualQuestGate {
     this.departButton.disabled = false;
     this.departButton.textContent = "外縁エリアへ出る";
     if (this.isPlayerInGate()) this.prompt.hidden = false;
+  }
+
+  setDestinationParticipants(participantsByDestination = {}) {
+    this.destinationParticipants = participantsByDestination;
+    this.renderDestinations();
   }
 
   prepareDeparture() {
@@ -244,35 +271,68 @@ export class VirtualQuestGate {
             <i class="ti ti-x" aria-hidden="true"></i>
           </button>
         </header>
-        <div class="virtual-quest-destinations">
-          ${DESTINATIONS.map((destination) => this.destinationMarkup(destination)).join("")}
-        </div>
+        <div class="virtual-quest-destinations"></div>
         <div class="virtual-quest-actions">
           <button class="virtual-quest-cancel" type="button">戻る</button>
           <button class="virtual-quest-depart" type="button">外縁エリアへ出る</button>
         </div>
       </section>
     `;
+    this.destinationsEl = modal.querySelector(".virtual-quest-destinations");
     this.closeButton = modal.querySelector(".virtual-quest-close");
     this.cancelButton = modal.querySelector(".virtual-quest-cancel");
     this.departButton = modal.querySelector(".virtual-quest-depart");
+    this.renderDestinations();
     return modal;
+  }
+
+  renderDestinations() {
+    if (!this.destinationsEl) return;
+    this.destinationsEl.innerHTML = DESTINATIONS.map((destination) =>
+      this.destinationMarkup(destination)
+    ).join("");
   }
 
   destinationMarkup(destination) {
     const locked = destination.state !== "open";
+    const participants = this.destinationParticipants[destination.id] || [];
+    const countLabel = `${participants.length}人`;
     return `
       <article class="virtual-quest-destination${locked ? " locked" : " open"}">
         <div class="virtual-quest-destination-top">
           <strong>${destination.title}</strong>
-          <span>${destination.status}</span>
+          <span>${destination.status} / ${countLabel}</span>
         </div>
         <p>${destination.summary}</p>
         <dl>
           <div><dt>目的</dt><dd>${destination.objective}</dd></div>
           <div><dt>報酬</dt><dd>${destination.reward}</dd></div>
         </dl>
+        <div class="virtual-quest-participants">
+          <div class="virtual-quest-participants-title">参加中</div>
+          ${
+            participants.length
+              ? participants.map((participant) => this.participantMarkup(participant)).join("")
+              : '<div class="virtual-quest-empty">現在いません</div>'
+          }
+        </div>
       </article>
+    `;
+  }
+
+  participantMarkup(participant) {
+    const name = escapeHtml(participant.name || "ゲスト");
+    const iconUrl = participant.iconType === "upload" ? participant.iconUrl || "" : "";
+    const icon = iconUrl
+      ? `<img src="${escapeHtml(iconUrl)}" alt="" />`
+      : `<span style="background:${escapeHtml(participant.bg || "#60758a")}">${escapeHtml(
+          participant.emoji || "👤"
+        )}</span>`;
+    return `
+      <div class="virtual-quest-participant">
+        <div class="virtual-quest-participant-icon">${icon}</div>
+        <div class="virtual-quest-participant-name">${name}</div>
+      </div>
     `;
   }
 }

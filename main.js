@@ -70,6 +70,10 @@ const AREAS = Object.freeze({
   OFFICE: "office",
   OUTER_EDGE: "outer-edge",
 });
+const AREA_LABELS = Object.freeze({
+  [AREAS.OFFICE]: "社内",
+  [AREAS.OUTER_EDGE]: "外縁エリア",
+});
 const OUTER_EDGE_MIN_ZOOM_MULTIPLIER = 2.2;
 const OUTER_EDGE_ENTRY = { x: W * 0.5, y: H * 0.18 };
 let currentArea = AREAS.OFFICE;
@@ -218,6 +222,15 @@ function isInGameArea(p) {
   const width = GAME_AREA.w * W;
   const height = GAME_AREA.h * H;
   return p.x >= x && p.x <= x + width && p.y >= y && p.y <= y + height;
+}
+
+function areaOfPlayer(player) {
+  if (player === me) return currentArea;
+  return player && player.area === AREAS.OUTER_EDGE ? AREAS.OUTER_EDGE : AREAS.OFFICE;
+}
+
+function isPlayerInCurrentArea(player) {
+  return areaOfPlayer(player) === currentArea;
 }
 
 const me = {
@@ -380,6 +393,7 @@ function normalizePlayer(id, value) {
   const useUpload = value.iconType === "upload" && !!iconUrl;
   const requestedIconId = typeof value.iconId === "string" ? value.iconId : "";
   const iconId = presetById(requestedIconId) ? requestedIconId : defaultPresetIdFor(id);
+  const area = value.area === AREAS.OUTER_EDGE ? AREAS.OUTER_EDGE : AREAS.OFFICE;
   return {
     ...value,
     x: Math.max(0, Math.min(W, value.x)),
@@ -389,6 +403,11 @@ function normalizePlayer(id, value) {
     iconType: useUpload ? "upload" : "preset",
     iconId,
     iconUrl: useUpload ? iconUrl : "",
+    area,
+    questAreaName:
+      area === AREAS.OUTER_EDGE
+        ? safeDisplayName(value.questAreaName, AREA_LABELS[AREAS.OUTER_EDGE])
+        : "",
     message:
       typeof value.message === "string"
         ? Array.from(value.message.replace(/[\r\n\u2028\u2029]+/g, " ")).slice(0, 15).join("")
@@ -420,6 +439,7 @@ function isAppActive() {
 
 function currentPresencePayload() {
   const active = isAppActive();
+  const questAreaName = currentArea === AREAS.OUTER_EDGE ? AREA_LABELS[AREAS.OUTER_EDGE] : null;
   return {
     x: Math.round(me.x),
     y: Math.round(me.y),
@@ -432,6 +452,8 @@ function currentPresencePayload() {
     sharing: !!(media && media.screenOn),
     message: me.message || null,
     messageEventId: me.message ? me.messageEventId || null : null,
+    area: currentArea,
+    questAreaName,
     active,
     activeAt: serverTimestamp(),
     heartbeatAt: serverTimestamp(),
@@ -741,7 +763,7 @@ function setupControls(media) {
         : "アナウンス（ショートカット: R）"
     );
     if (meRef) update(meRef, { announcing });
-    toast(announcing ? "全体アナウンスを開始（全員に配信）" : "アナウンスを終了しました");
+    toast(announcing ? "アナウンスを開始（現在のエリアに配信）" : "アナウンスを終了しました");
     noteHudActivity();
   };
   const openSummonPanel = () => {
@@ -1047,9 +1069,46 @@ function removeOtherPlayer(id) {
   removeVideo(id);
 }
 
+function ownPresenceSnapshot() {
+  return {
+    ...me,
+    area: currentArea,
+    questAreaName: currentArea === AREAS.OUTER_EDGE ? AREA_LABELS[AREAS.OUTER_EDGE] : "",
+  };
+}
+
+function allPresentPlayers() {
+  return meRef ? [ownPresenceSnapshot(), ...Object.values(others)] : Object.values(others);
+}
+
+function countPlayersInArea(area) {
+  return allPresentPlayers().filter((player) => (player.area || AREAS.OFFICE) === area).length;
+}
+
+function virtualQuestParticipantFromPlayer(player) {
+  const preset = player.iconType === "preset" ? presetById(player.iconId) : null;
+  return {
+    name: safeDisplayName(player.name, "ゲスト"),
+    iconType: player.iconType === "upload" && player.iconUrl ? "upload" : "preset",
+    iconUrl: player.iconType === "upload" ? player.iconUrl || "" : "",
+    emoji: preset ? preset.emoji : "👤",
+    bg: preset ? preset.bg : "#60758a",
+  };
+}
+
+function getVirtualQuestDestinationParticipants() {
+  return {
+    [AREAS.OUTER_EDGE]: allPresentPlayers()
+      .filter((player) => areaOfPlayer(player) === AREAS.OUTER_EDGE)
+      .map(virtualQuestParticipantFromPlayer),
+  };
+}
+
 function updateOnlineStatus() {
-  const onlineCount = (meRef ? 1 : 0) + Object.keys(others).length;
-  document.getElementById("status").textContent = `オンライン: ${onlineCount}人`;
+  const officeCount = countPlayersInArea(AREAS.OFFICE);
+  const questCount = countPlayersInArea(AREAS.OUTER_EDGE);
+  document.getElementById("status").textContent = `社内: ${officeCount}人 / バーチャルクエスト: ${questCount}人`;
+  if (virtualQuestGate) virtualQuestGate.setDestinationParticipants(getVirtualQuestDestinationParticipants());
 }
 
 function pruneStalePlayers() {
@@ -1561,6 +1620,7 @@ function step() {
 // ---- 接続判定（エリア / 全体アナウンス / 近接）----
 let rtc = null;
 function isPeerInCallRange(o, wasInRange) {
+  if (!isPlayerInCurrentArea(o)) return false;
   if (currentArea !== AREAS.OFFICE) return false;
   const mz = zoneOf(me);
   const oz = zoneOf(o);
@@ -1606,7 +1666,9 @@ function updateConnections() {
     const o = others[id];
     const connected = rtc.isConnected(id);
     let want;
-    if (announcing || o.announcing) {
+    if (!isPlayerInCurrentArea(o)) {
+      want = false;
+    } else if (announcing || o.announcing) {
       want = true; // アナウンス中は全員と接続
     } else {
       want = isPeerInCallRange(o, connected);
@@ -1627,6 +1689,11 @@ function updateSpatialAudio() {
     const v = tile.querySelector("video");
     if (!v) continue;
     const o = others[id];
+    if (!isPlayerInCurrentArea(o)) {
+      v.volume = 0;
+      tile.style.opacity = "0.45";
+      continue;
+    }
     let vol;
     if (announcing || o.announcing || (mz && zoneOf(o) === mz)) {
       vol = 1; // 部屋内 / アナウンスは全員フル音量
@@ -1654,7 +1721,9 @@ function updateBanner() {
   if (!banner) return;
   const names = [];
   if (announcing) names.push(me.name);
-  for (const id in others) if (others[id].announcing) names.push(others[id].name || "誰か");
+  for (const id in others) {
+    if (others[id].announcing && isPlayerInCurrentArea(others[id])) names.push(others[id].name || "誰か");
+  }
   if (names.length) {
     banner.hidden = false;
     banner.textContent = "📢 " + names.join("、") + " がアナウンス中";
@@ -1664,7 +1733,7 @@ function updateBanner() {
 }
 function renderSummonList(listEl) {
   listEl.innerHTML = "";
-  const ids = Object.keys(others);
+  const ids = Object.keys(others).filter((id) => isPlayerInCurrentArea(others[id]));
   if (!ids.length) {
     listEl.innerHTML = '<div class="empty">他に誰もいません</div>';
     return;
@@ -1845,7 +1914,7 @@ function drawStampAnimations(now) {
     const stamp = activeStamps[index];
     const owner = stamp.ownerId === myId ? me : others[stamp.ownerId];
     const elapsed = now - stamp.startedAt;
-    if (!owner || elapsed >= STAMP_DURATION_MS) {
+    if (!owner || !isPlayerInCurrentArea(owner) || elapsed >= STAMP_DURATION_MS) {
       activeStamps.splice(index, 1);
       continue;
     }
@@ -2041,6 +2110,7 @@ function render() {
 
   if (currentArea === AREAS.OFFICE) {
     for (const id in others) {
+      if (!isPlayerInCurrentArea(others[id])) continue;
       const diag = rtc && rtc.getDiag(id);
       drawAvatar(others[id], false, !!diag && diag.conn === "connected");
     }
@@ -2050,6 +2120,7 @@ function render() {
   // 吹き出しはアバターより後に描き、他のアイコンに隠れにくくする。
   if (currentArea === AREAS.OFFICE) {
     for (const id in others) {
+      if (!isPlayerInCurrentArea(others[id])) continue;
       drawMessageBubble(others[id], false);
     }
   }
@@ -2069,7 +2140,7 @@ function updateShareStage() {
     name = "あなた";
   } else {
     for (const id in others) {
-      if (others[id] && others[id].sharing) {
+      if (others[id] && others[id].sharing && isPlayerInCurrentArea(others[id])) {
         const tile = videoTiles.get(id);
         const v = tile && tile.querySelector("video");
         if (v && v.srcObject) {
@@ -2085,7 +2156,8 @@ function updateShareStage() {
   // 共有中タイルの枠ハイライト
   videoTiles.forEach((tile, id) => {
     const sharing =
-      (id === "__me__" && media && media.screenOn) || (others[id] && others[id].sharing);
+      (id === "__me__" && media && media.screenOn) ||
+      (others[id] && others[id].sharing && isPlayerInCurrentArea(others[id]));
     tile.classList.toggle("sharing", !!sharing);
   });
 
@@ -2338,6 +2410,7 @@ function setupVirtualQuestGate() {
     worldWidth: W,
     worldHeight: H,
     getPlayer: () => me,
+    getDestinationParticipants: getVirtualQuestDestinationParticipants,
     clearMovementInput,
     showHud,
     toast,
@@ -2388,6 +2461,8 @@ function enterOuterEdgeArea() {
   setZoom(minZoom());
   const returnButton = document.getElementById("virtual-quest-return");
   if (returnButton) returnButton.hidden = false;
+  restorePresence();
+  updateOnlineStatus();
   showHud();
 }
 
@@ -2399,10 +2474,12 @@ function returnToOfficeArea() {
   me.y = officeReturnPosition.y;
   camera.x = me.x;
   camera.y = me.y;
-  setZoom(camera.zoom);
+  setZoom(fitZoom());
   dirty = true;
   const returnButton = document.getElementById("virtual-quest-return");
   if (returnButton) returnButton.hidden = true;
+  restorePresence();
+  updateOnlineStatus();
   showHud();
 }
 
