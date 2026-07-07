@@ -177,6 +177,18 @@ html, body {
 .ctrl.off:hover { background: #c23a36; }
 .ctrl.active { background: #1f6f43; }    /* 画面共有/アナウンス 有効中 */
 .ctrl.active:hover { background: #268a53; }
+
+/* ---- カメラ＋背景オプション（Zoom風の split button）---- */
+.ctrl-split {
+  display: flex;
+  align-items: center;
+  gap: 2px; /* 別クリック領域だと分かる程度の細い隙間 */
+}
+.ctrl-arrow {
+  width: 20px;
+  border-radius: 8px;
+}
+.ctrl-arrow .ti { font-size: 13px; }
 .shortcut-badge {
   position: absolute;
   right: -1px;
@@ -1137,6 +1149,8 @@ body.hud-hidden:not(.in-call) #videos {
   .tile { width: 104px; height: 78px; }
   .ctrl { flex: 0 0 42px; width: 42px; height: 42px; }
   .ctrl .ti { font-size: 19px; }
+  .ctrl-arrow { flex: 0 0 18px; width: 18px; }
+  .ctrl-arrow .ti { font-size: 12px; }
   #controls {
     box-sizing: border-box;
     width: max-content;
