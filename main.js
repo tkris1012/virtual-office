@@ -668,7 +668,10 @@ function setupControls(media) {
     const on = media.cameraOn;
     setIcon(camBtn, on ? "ti-video" : "ti-video-off");
     camBtn.classList.toggle("off", !on);
-    camBtn.setAttribute("aria-label", on ? "カメラ オン" : "カメラ オフ");
+    camBtn.setAttribute(
+      "aria-label",
+      on ? "カメラ オン（ショートカット: V）" : "カメラ オフ（ショートカット: V）"
+    );
     // 自分タイルはカメラON時のみ鏡像（OFF/画面共有中はそのまま表示）
     const myTile = videoTiles.get("__me__");
     if (myTile) myTile.classList.toggle("mirror", on && !media.screenOn);
@@ -677,7 +680,10 @@ function setupControls(media) {
     const on = media.micOn;
     setIcon(micBtn, on ? "ti-microphone" : "ti-microphone-off");
     micBtn.classList.toggle("off", !on);
-    micBtn.setAttribute("aria-label", on ? "マイク オン" : "マイク オフ");
+    micBtn.setAttribute(
+      "aria-label",
+      on ? "マイク オン（ショートカット: B）" : "マイク オフ（ショートカット: B）"
+    );
   }
   function syncScreenUI() {
     const on = media.screenOn;
@@ -693,14 +699,40 @@ function setupControls(media) {
     bgBtn.classList.toggle("active", bgMode.value !== "none");
   }
 
-  camBtn.addEventListener("click", () => {
+  const toggleCamera = () => {
     media.toggleCamera();
     syncCamUI();
-  });
-  micBtn.addEventListener("click", () => {
+    noteHudActivity();
+  };
+  const toggleMic = () => {
     media.toggleMic();
     syncMicUI();
-  });
+    noteHudActivity();
+  };
+  const toggleAnnounce = () => {
+    announcing = !announcing;
+    annBtn.classList.toggle("active", announcing);
+    annBtn.setAttribute("aria-pressed", announcing ? "true" : "false");
+    annBtn.setAttribute(
+      "aria-label",
+      announcing
+        ? "アナウンス 中（ショートカット: R）"
+        : "アナウンス（ショートカット: R）"
+    );
+    if (meRef) update(meRef, { announcing });
+    toast(announcing ? "全体アナウンスを開始（全員に配信）" : "アナウンスを終了しました");
+    noteHudActivity();
+  };
+  const openSummonPanel = () => {
+    closePopovers();
+    renderSummonList(summonList);
+    summonPanel.hidden = false;
+    summonList.querySelector("input, button")?.focus();
+    noteHudActivity();
+  };
+
+  camBtn.addEventListener("click", toggleCamera);
+  micBtn.addEventListener("click", toggleMic);
 
   // --- 画面共有 ---
   media.onScreenEnd = syncScreenUI; // ブラウザ側「共有を停止」にも追従
@@ -718,12 +750,7 @@ function setupControls(media) {
   });
 
   // --- 全体アナウンス ---
-  annBtn.addEventListener("click", () => {
-    announcing = !announcing;
-    annBtn.classList.toggle("active", announcing);
-    if (meRef) update(meRef, { announcing });
-    toast(announcing ? "全体アナウンスを開始（全員に配信）" : "アナウンスを終了しました");
-  });
+  annBtn.addEventListener("click", toggleAnnounce);
 
   // --- 背景（ポップオーバー）---
   bgBtn.addEventListener("click", () => {
@@ -768,10 +795,7 @@ function setupControls(media) {
   summonBtn.addEventListener("click", () => {
     const show = summonPanel.hidden;
     closePopovers();
-    if (show) {
-      renderSummonList(summonList);
-      summonPanel.hidden = false;
-    }
+    if (show) openSummonPanel();
   });
   document.getElementById("summon-cancel").addEventListener("click", () => (summonPanel.hidden = true));
   document.getElementById("summon-go").addEventListener("click", () => {
@@ -858,6 +882,38 @@ function setupControls(media) {
       return;
     }
     const shortcutKey = event.key.toLowerCase();
+    const canUseControlShortcut =
+      !event.repeat &&
+      !event.isComposing &&
+      !isEditableTarget(event.target) &&
+      !isBlockingOverlayOpen();
+    if (canUseControlShortcut) {
+      if (shortcutKey === "v") {
+        event.preventDefault();
+        toggleCamera();
+        return;
+      }
+      if (shortcutKey === "b") {
+        event.preventDefault();
+        toggleMic();
+        return;
+      }
+      if (shortcutKey === "r") {
+        event.preventDefault();
+        toggleAnnounce();
+        return;
+      }
+      if (shortcutKey === "t") {
+        event.preventDefault();
+        openSummonPanel();
+        return;
+      }
+      if (shortcutKey === "q") {
+        event.preventDefault();
+        showLeaveConfirmDialog();
+        return;
+      }
+    }
     if (
       !stampPopover.hidden &&
       !event.repeat &&
@@ -2091,7 +2147,7 @@ function isEditableTarget(target) {
 }
 
 function isBlockingOverlayOpen(excludeIds = []) {
-  return ["slime-game-modal", "crop-modal", "console", "chat-panel"].some((id) => {
+  return ["slime-game-modal", "crop-modal", "console", "chat-panel", "leave-confirm-dialog"].some((id) => {
     if (excludeIds.includes(id)) return false;
     const element = document.getElementById(id);
     return element && !element.hidden;
@@ -2204,6 +2260,7 @@ function isHudPaused() {
   const sp = document.getElementById("summon-panel");
   const mp = document.getElementById("message-popover");
   const stamp = document.getElementById("stamp-popover");
+  const leaveConfirm = document.getElementById("leave-confirm-dialog");
   const cs = document.getElementById("console");
   const cp = document.getElementById("chat-panel");
   return (
@@ -2211,6 +2268,7 @@ function isHudPaused() {
     (sp && !sp.hidden) ||
     (mp && !mp.hidden) ||
     (stamp && !stamp.hidden) ||
+    (leaveConfirm && !leaveConfirm.hidden) ||
     (cs && !cs.hidden) ||
     (cp && !cp.hidden) ||
     (slimeGame && slimeGame.isPlaying()) ||
@@ -2494,11 +2552,61 @@ async function leaveRoom() {
   } catch (_) {}
   location.href = location.origin + location.pathname;
 }
+let leaveConfirmDialogWired = false;
+function closeLeaveConfirmDialog(returnFocus = true) {
+  const dialog = document.getElementById("leave-confirm-dialog");
+  if (!dialog || dialog.hidden) return;
+  dialog.hidden = true;
+  if (returnFocus) document.getElementById("btn-leave")?.focus();
+}
+function showLeaveConfirmDialog() {
+  const dialog = document.getElementById("leave-confirm-dialog");
+  const card = dialog?.querySelector(".confirm-dialog-card");
+  if (!dialog || !card) {
+    leaveRoom();
+    return;
+  }
+  cancelTransientHudOperations();
+  showHud();
+  dialog.hidden = false;
+  card.focus();
+  noteHudActivity();
+}
+function setupLeaveConfirmDialog() {
+  if (leaveConfirmDialogWired) return;
+  leaveConfirmDialogWired = true;
+
+  const dialog = document.getElementById("leave-confirm-dialog");
+  const yesBtn = document.getElementById("leave-confirm-yes");
+  const noBtn = document.getElementById("leave-confirm-no");
+  if (!dialog || !yesBtn || !noBtn) return;
+
+  yesBtn.addEventListener("click", leaveRoom);
+  noBtn.addEventListener("click", () => closeLeaveConfirmDialog());
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) closeLeaveConfirmDialog();
+  });
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (dialog.hidden) return;
+      if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        leaveRoom();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        closeLeaveConfirmDialog();
+      }
+    },
+    true
+  );
+}
 function wireRoomButtons() {
   const inviteBtn = document.getElementById("btn-invite");
   const leaveBtn = document.getElementById("btn-leave");
+  setupLeaveConfirmDialog();
   if (inviteBtn) inviteBtn.addEventListener("click", copyInvite);
-  if (leaveBtn) leaveBtn.addEventListener("click", leaveRoom);
+  if (leaveBtn) leaveBtn.addEventListener("click", showLeaveConfirmDialog);
 }
 
 function setupLobby() {
