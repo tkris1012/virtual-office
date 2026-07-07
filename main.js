@@ -76,6 +76,65 @@ const AREA_LABELS = Object.freeze({
 });
 const OUTER_EDGE_MIN_ZOOM_MULTIPLIER = 2.2;
 const OUTER_EDGE_ENTRY = { x: W * 0.5, y: H * 0.18 };
+const OUTER_EDGE_COMING_SOON_RANGE = 54;
+const OUTER_EDGE_COMING_SOON_SPOTS = Object.freeze([
+  {
+    id: "left-stone-device",
+    x: W * 0.14,
+    y: H * 0.35,
+    title: "COMING SOON",
+    message: "石像のようなものがある。古い装置にも見えるが、まだ何もできなそうだ。",
+  },
+  {
+    id: "left-bench",
+    x: W * 0.18,
+    y: H * 0.48,
+    title: "COMING SOON",
+    message: "ベンチのようなものがある。ひと休みできそうだが、まだ何もできなそうだ。",
+  },
+  {
+    id: "left-crystal",
+    x: W * 0.25,
+    y: H * 0.46,
+    title: "COMING SOON",
+    message: "水晶のようなものがある。まだ何もできなそうだ。（今後機能追加で使えるようになります。）",
+  },
+  {
+    id: "center-crystal",
+    x: W * 0.5,
+    y: H * 0.53,
+    title: "COMING SOON",
+    message: "水晶のようなものがある。淡く反応しているが、まだ何もできなそうだ。",
+  },
+  {
+    id: "right-crystal",
+    x: W * 0.72,
+    y: H * 0.34,
+    title: "COMING SOON",
+    message: "水晶のようなものがある。何かを記録していそうだが、まだ何もできなそうだ。",
+  },
+  {
+    id: "lower-left-dock",
+    x: W * 0.1,
+    y: H * 0.76,
+    title: "COMING SOON",
+    message: "船着き場のようなところがある。外へ向かえそうだが、まだ何もできなそうだ。",
+  },
+  {
+    id: "lower-portal",
+    x: W * 0.5,
+    y: H * 0.76,
+    title: "COMING SOON",
+    message: "ポータルのような場所がある。どこかへつながりそうだが、まだ何もできなそうだ。",
+  },
+  {
+    id: "right-ruin-gate",
+    x: W * 0.85,
+    y: H * 0.45,
+    title: "COMING SOON",
+    message: "石像のような門柱がある。奥に進めそうだが、まだ何もできなそうだ。",
+  },
+]);
 let currentArea = AREAS.OFFICE;
 let officeReturnPosition = { x: W * 0.475, y: H * 0.9 };
 
@@ -2467,6 +2526,18 @@ function setupVirtualQuestStageControls() {
   participantsPanel.hidden = true;
   document.body.appendChild(participantsPanel);
 
+  const comingSoonPanel = document.createElement("div");
+  comingSoonPanel.id = "virtual-quest-coming-soon";
+  comingSoonPanel.hidden = true;
+
+  const comingSoonTitle = document.createElement("div");
+  comingSoonTitle.className = "virtual-quest-coming-soon-title";
+  const comingSoonMessage = document.createElement("div");
+  comingSoonMessage.className = "virtual-quest-coming-soon-message";
+  comingSoonPanel.appendChild(comingSoonTitle);
+  comingSoonPanel.appendChild(comingSoonMessage);
+  document.body.appendChild(comingSoonPanel);
+
   const returnButton = document.createElement("button");
   returnButton.id = "virtual-quest-return";
   returnButton.type = "button";
@@ -2504,6 +2575,7 @@ function enterOuterEdgeArea() {
   if (returnButton) returnButton.hidden = false;
   restorePresence();
   updateOnlineStatus();
+  updateVirtualQuestComingSoon();
   showHud();
 }
 
@@ -2521,7 +2593,35 @@ function returnToOfficeArea() {
   if (returnButton) returnButton.hidden = true;
   restorePresence();
   updateOnlineStatus();
+  updateVirtualQuestComingSoon();
   showHud();
+}
+
+function nearestOuterEdgeComingSoonSpot() {
+  let nearest = null;
+  let nearestDistance = Infinity;
+  for (const spot of OUTER_EDGE_COMING_SOON_SPOTS) {
+    const distance = Math.hypot(me.x - spot.x, me.y - spot.y);
+    if (distance < nearestDistance) {
+      nearest = spot;
+      nearestDistance = distance;
+    }
+  }
+  return nearestDistance <= OUTER_EDGE_COMING_SOON_RANGE ? nearest : null;
+}
+
+function updateVirtualQuestComingSoon() {
+  const panel = document.getElementById("virtual-quest-coming-soon");
+  if (!panel) return;
+
+  const spot = currentArea === AREAS.OUTER_EDGE ? nearestOuterEdgeComingSoonSpot() : null;
+  panel.hidden = !spot;
+  if (!spot) return;
+
+  const title = panel.querySelector(".virtual-quest-coming-soon-title");
+  const message = panel.querySelector(".virtual-quest-coming-soon-message");
+  if (title) title.textContent = spot.title;
+  if (message) message.textContent = spot.message;
 }
 
 // ---- HUD 自動表示/非表示（無操作で隠す＋マップのタップ/クリックでトグル）----
@@ -2638,6 +2738,7 @@ function loop(now) {
   step();
   updateGameArea(t);
   if (virtualQuestGate && currentArea === AREAS.OFFICE) virtualQuestGate.update(t);
+  updateVirtualQuestComingSoon();
   flushPosition(t);
   updateProximityChimes();
   updateConnections();

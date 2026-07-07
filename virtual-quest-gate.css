@@ -306,6 +306,33 @@ body.virtual-quest-open #joystick {
   white-space: nowrap;
 }
 
+#virtual-quest-coming-soon {
+  position: fixed;
+  left: 50%;
+  bottom: 92px;
+  z-index: 35;
+  width: min(520px, calc(100vw - 24px));
+  padding: 12px 14px;
+  color: #eefdfb;
+  background: rgba(9, 22, 29, 0.94);
+  border: 1px solid rgba(98, 232, 216, 0.46);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38);
+  transform: translateX(-50%);
+}
+#virtual-quest-coming-soon[hidden] { display: none; }
+.virtual-quest-coming-soon-title {
+  color: #70eadc;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+.virtual-quest-coming-soon-message {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 #virtual-quest-return {
   position: fixed;
   top: 16px;
