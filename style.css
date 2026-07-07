@@ -208,6 +208,66 @@ html, body {
 }
 .chat-badge[hidden] { display: none; }
 
+#leave-confirm-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(6, 9, 15, 0.72);
+}
+#leave-confirm-dialog[hidden] { display: none; }
+.confirm-dialog-card {
+  width: min(340px, 100%);
+  padding: 20px;
+  color: var(--text);
+  background: var(--panel);
+  border: 0.5px solid var(--panel-border);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.48);
+}
+.confirm-dialog-card:focus { outline: none; }
+.confirm-dialog-card h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  line-height: 1.3;
+}
+.confirm-dialog-card p {
+  margin: 0 0 16px;
+  color: #cdd6ea;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.confirm-dialog-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.confirm-dialog-actions .ctrl-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.confirm-dialog-actions .danger {
+  color: #fff;
+  background: #a3302d;
+  border-color: transparent;
+}
+.confirm-dialog-actions .danger:hover { background: #c23a36; }
+.confirm-dialog-actions kbd {
+  min-width: 32px;
+  padding: 2px 5px;
+  color: #dce5f7;
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 5px;
+  font: 700 10px/1 sans-serif;
+  text-align: center;
+}
+
 /* ---- 下部コントロール共通ツールチップ ---- */
 #control-tooltip {
   position: fixed;
