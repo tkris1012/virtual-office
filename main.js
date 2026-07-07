@@ -30,6 +30,7 @@ import { RTCManager, getIceServers, runIceTest } from "./rtc.js";
 import { MediaController } from "./media.js";
 import { PRESET_ICONS, presetById, defaultPresetIdFor, EMOJI_FONT } from "./avatars.js";
 import { SlimeGame } from "./slime-game.js";
+import { VirtualQuestGate } from "./virtual-quest-gate.js";
 
 // ---- 設定 ----
 const params = new URLSearchParams(location.search);
@@ -65,12 +66,87 @@ const ctx = canvas.getContext("2d");
 // 既存コード(ゾーン/壁/描画)はワールド座標で書かれているため、名前は W/H のまま固定値にする。
 const W = 960; // WORLD_W（office3.png は 16:9）
 const H = 540; // WORLD_H
+const AREAS = Object.freeze({
+  OFFICE: "office",
+  OUTER_EDGE: "outer-edge",
+});
+const AREA_LABELS = Object.freeze({
+  [AREAS.OFFICE]: "社内",
+  [AREAS.OUTER_EDGE]: "外縁エリア",
+});
+const OUTER_EDGE_MIN_ZOOM_MULTIPLIER = 2.2;
+const OUTER_EDGE_ENTRY = { x: W * 0.5, y: H * 0.18 };
+const OUTER_EDGE_COMING_SOON_RANGE = 54;
+const OUTER_EDGE_COMING_SOON_SPOTS = Object.freeze([
+  {
+    id: "left-stone-device",
+    x: W * 0.14,
+    y: H * 0.35,
+    title: "COMING SOON",
+    message: "石像のようなものがある。古い装置にも見えるが、まだ何もできなそうだ。",
+  },
+  {
+    id: "left-bench",
+    x: W * 0.18,
+    y: H * 0.48,
+    title: "COMING SOON",
+    message: "ベンチのようなものがある。ひと休みできそうだが、まだ何もできなそうだ。",
+  },
+  {
+    id: "left-crystal",
+    x: W * 0.25,
+    y: H * 0.46,
+    title: "COMING SOON",
+    message: "水晶のようなものがある。まだ何もできなそうだ。（今後機能追加で使えるようになります。）",
+  },
+  {
+    id: "center-crystal",
+    x: W * 0.5,
+    y: H * 0.53,
+    title: "COMING SOON",
+    message: "水晶のようなものがある。淡く反応しているが、まだ何もできなそうだ。",
+  },
+  {
+    id: "right-crystal",
+    x: W * 0.72,
+    y: H * 0.34,
+    title: "COMING SOON",
+    message: "水晶のようなものがある。何かを記録していそうだが、まだ何もできなそうだ。",
+  },
+  {
+    id: "lower-left-dock",
+    x: W * 0.1,
+    y: H * 0.76,
+    title: "COMING SOON",
+    message: "船着き場のようなところがある。外へ向かえそうだが、まだ何もできなそうだ。",
+  },
+  {
+    id: "lower-portal",
+    x: W * 0.5,
+    y: H * 0.76,
+    title: "COMING SOON",
+    message: "ポータルのような場所がある。どこかへつながりそうだが、まだ何もできなそうだ。",
+  },
+  {
+    id: "right-ruin-gate",
+    x: W * 0.85,
+    y: H * 0.45,
+    title: "COMING SOON",
+    message: "石像のような門柱がある。奥に進めそうだが、まだ何もできなそうだ。",
+  },
+]);
+let currentArea = AREAS.OFFICE;
+let officeReturnPosition = { x: W * 0.475, y: H * 0.9 };
 
 // ---- カメラ（各端末ローカル・通信しない）。アバターを追従しズームしてスクロール表示 ----
 const MOBILE = matchMedia("(pointer: coarse)").matches || window.innerWidth < 700;
 // ワールドが画面を覆う最小ズーム（これ未満だと黒余白が出る＝全画面表示の下限）
 function fitZoom() {
   return Math.max(window.innerWidth / W, window.innerHeight / H);
+}
+function minZoom() {
+  const base = fitZoom();
+  return currentArea === AREAS.OUTER_EDGE ? base * OUTER_EDGE_MIN_ZOOM_MULTIPLIER : base;
 }
 const camera = { x: W / 2, y: H / 2, zoom: fitZoom() }; // 既定は全画面フィット。ピンチ/ホイールで拡大可
 let dpr = 1;
@@ -98,7 +174,7 @@ function updateCamera() {
 
 // ---- 手動ズーム（PC=ホイール / スマホ=ピンチ）----
 function setZoom(z) {
-  camera.zoom = Math.max(fitZoom(), Math.min(4, z)); // 下限＝全画面フィット
+  camera.zoom = Math.max(minZoom(), Math.min(6, z)); // 下限＝全画面フィット。クエスト中は強めに寄る
 }
 canvas.addEventListener(
   "wheel",
@@ -147,6 +223,11 @@ let officeImgReady = false;
 officeImg.onload = () => (officeImgReady = true);
 officeImg.src = "office3.png";
 
+const outerEdgeImg = new Image();
+let outerEdgeImgReady = false;
+outerEdgeImg.onload = () => (outerEdgeImgReady = true);
+outerEdgeImg.src = "assets/virtual-quest-outer-edge.png";
+
 // 壁(通行不可)を正規化座標(0..1)で定義 → 実ピクセルへ変換。
 // ?debug のグリッドを見ながら office.png のレイアウトに合わせて調整する。
 const WALL_RECTS_N = [
@@ -183,6 +264,7 @@ const ZONES = [
 ];
 const GAME_AREA = { id: "slime-game", x: 0.59, y: 0.54, w: 0.24, h: 0.3 };
 function zoneOf(p) {
+  if (currentArea !== AREAS.OFFICE) return null;
   for (const z of ZONES) {
     const zx = z.x * W,
       zy = z.y * H,
@@ -193,11 +275,21 @@ function zoneOf(p) {
   return null;
 }
 function isInGameArea(p) {
+  if (currentArea !== AREAS.OFFICE) return false;
   const x = GAME_AREA.x * W;
   const y = GAME_AREA.y * H;
   const width = GAME_AREA.w * W;
   const height = GAME_AREA.h * H;
   return p.x >= x && p.x <= x + width && p.y >= y && p.y <= y + height;
+}
+
+function areaOfPlayer(player) {
+  if (player === me) return currentArea;
+  return player && player.area === AREAS.OUTER_EDGE ? AREAS.OUTER_EDGE : AREAS.OFFICE;
+}
+
+function isPlayerInCurrentArea(player) {
+  return areaOfPlayer(player) === currentArea;
 }
 
 const me = {
@@ -230,6 +322,7 @@ let gameState = GAME_STATES.OUTSIDE;
 let gameCooldownUntil = 0;
 let lockedGamePosition = null;
 let slimeGame = null;
+let virtualQuestGate = null;
 
 // ---- 通知音 / アクティブ状態 ----
 let notificationAudioContext = null;
@@ -359,6 +452,7 @@ function normalizePlayer(id, value) {
   const useUpload = value.iconType === "upload" && !!iconUrl;
   const requestedIconId = typeof value.iconId === "string" ? value.iconId : "";
   const iconId = presetById(requestedIconId) ? requestedIconId : defaultPresetIdFor(id);
+  const area = value.area === AREAS.OUTER_EDGE ? AREAS.OUTER_EDGE : AREAS.OFFICE;
   return {
     ...value,
     x: Math.max(0, Math.min(W, value.x)),
@@ -368,6 +462,11 @@ function normalizePlayer(id, value) {
     iconType: useUpload ? "upload" : "preset",
     iconId,
     iconUrl: useUpload ? iconUrl : "",
+    area,
+    questAreaName:
+      area === AREAS.OUTER_EDGE
+        ? safeDisplayName(value.questAreaName, AREA_LABELS[AREAS.OUTER_EDGE])
+        : "",
     message:
       typeof value.message === "string"
         ? Array.from(value.message.replace(/[\r\n\u2028\u2029]+/g, " ")).slice(0, 15).join("")
@@ -399,6 +498,7 @@ function isAppActive() {
 
 function currentPresencePayload() {
   const active = isAppActive();
+  const questAreaName = currentArea === AREAS.OUTER_EDGE ? AREA_LABELS[AREAS.OUTER_EDGE] : null;
   return {
     x: Math.round(me.x),
     y: Math.round(me.y),
@@ -411,6 +511,8 @@ function currentPresencePayload() {
     sharing: !!(media && media.screenOn),
     message: me.message || null,
     messageEventId: me.message ? me.messageEventId || null : null,
+    area: currentArea,
+    questAreaName,
     active,
     activeAt: serverTimestamp(),
     heartbeatAt: serverTimestamp(),
@@ -720,7 +822,7 @@ function setupControls(media) {
         : "アナウンス（ショートカット: R）"
     );
     if (meRef) update(meRef, { announcing });
-    toast(announcing ? "全体アナウンスを開始（全員に配信）" : "アナウンスを終了しました");
+    toast(announcing ? "アナウンスを開始（現在のエリアに配信）" : "アナウンスを終了しました");
     noteHudActivity();
   };
   const openSummonPanel = () => {
@@ -1026,9 +1128,82 @@ function removeOtherPlayer(id) {
   removeVideo(id);
 }
 
+function ownPresenceSnapshot() {
+  return {
+    ...me,
+    area: currentArea,
+    questAreaName: currentArea === AREAS.OUTER_EDGE ? AREA_LABELS[AREAS.OUTER_EDGE] : "",
+  };
+}
+
+function allPresentPlayers() {
+  return meRef ? [ownPresenceSnapshot(), ...Object.values(others)] : Object.values(others);
+}
+
+function countPlayersInArea(area) {
+  return allPresentPlayers().filter((player) => (player.area || AREAS.OFFICE) === area).length;
+}
+
+function virtualQuestParticipantFromPlayer(player) {
+  const preset = player.iconType === "preset" ? presetById(player.iconId) : null;
+  return {
+    name: safeDisplayName(player.name, "ゲスト"),
+    iconType: player.iconType === "upload" && player.iconUrl ? "upload" : "preset",
+    iconUrl: player.iconType === "upload" ? player.iconUrl || "" : "",
+    emoji: preset ? preset.emoji : "👤",
+    bg: preset ? preset.bg : "#60758a",
+  };
+}
+
+function getVirtualQuestDestinationParticipants() {
+  return {
+    [AREAS.OUTER_EDGE]: allPresentPlayers()
+      .filter((player) => areaOfPlayer(player) === AREAS.OUTER_EDGE)
+      .map(virtualQuestParticipantFromPlayer),
+  };
+}
+
+function renderQuestAreaParticipants() {
+  const panel = document.getElementById("virtual-quest-area-participants");
+  if (!panel) return;
+
+  const participants = getVirtualQuestDestinationParticipants()[AREAS.OUTER_EDGE] || [];
+  panel.hidden = currentArea !== AREAS.OUTER_EDGE;
+  panel.replaceChildren();
+  for (const participant of participants) {
+    const row = document.createElement("div");
+    row.className = "virtual-quest-area-participant";
+
+    const icon = document.createElement("div");
+    icon.className = "virtual-quest-area-participant-icon";
+    if (participant.iconType === "upload" && participant.iconUrl) {
+      const image = document.createElement("img");
+      image.src = participant.iconUrl;
+      image.alt = "";
+      icon.appendChild(image);
+    } else {
+      const emoji = document.createElement("span");
+      emoji.style.background = participant.bg;
+      emoji.textContent = participant.emoji;
+      icon.appendChild(emoji);
+    }
+
+    const name = document.createElement("div");
+    name.className = "virtual-quest-area-participant-name";
+    name.textContent = participant.name;
+
+    row.appendChild(icon);
+    row.appendChild(name);
+    panel.appendChild(row);
+  }
+}
+
 function updateOnlineStatus() {
-  const onlineCount = (meRef ? 1 : 0) + Object.keys(others).length;
-  document.getElementById("status").textContent = `オンライン: ${onlineCount}人`;
+  const officeCount = countPlayersInArea(AREAS.OFFICE);
+  const questCount = countPlayersInArea(AREAS.OUTER_EDGE);
+  document.getElementById("status").textContent = `社内: ${officeCount}人 / バーチャルクエスト: ${questCount}人`;
+  if (virtualQuestGate) virtualQuestGate.setDestinationParticipants(getVirtualQuestDestinationParticipants());
+  renderQuestAreaParticipants();
 }
 
 function pruneStalePlayers() {
@@ -1391,6 +1566,10 @@ let dirty = false;
 let lastSent = 0;
 function flushPosition(now) {
   if (!meRef) return;
+  if (currentArea !== AREAS.OFFICE) {
+    dirty = false;
+    return;
+  }
   if (dirty && now - lastSent > 80) {
     update(meRef, { x: Math.round(me.x), y: Math.round(me.y), ts: Date.now() });
     lastSent = now;
@@ -1407,7 +1586,8 @@ addEventListener("keydown", (e) => {
     !MOVEMENT_KEYS.has(key) ||
     e.isComposing ||
     isEditableTarget(e.target) ||
-    (slimeGame && slimeGame.isPlaying())
+    (slimeGame && slimeGame.isPlaying()) ||
+    (virtualQuestGate && virtualQuestGate.isBlockingOverlayOpen())
   ) {
     return;
   }
@@ -1439,7 +1619,7 @@ function joyPoint(e) {
   return e;
 }
 function joyStart(e) {
-  if (slimeGame && slimeGame.isPlaying()) {
+  if ((slimeGame && slimeGame.isPlaying()) || (virtualQuestGate && virtualQuestGate.isBlockingOverlayOpen())) {
     e.preventDefault();
     return;
   }
@@ -1490,7 +1670,7 @@ if (joyEl) {
 }
 
 function step() {
-  if (slimeGame && slimeGame.isPlaying()) {
+  if ((slimeGame && slimeGame.isPlaying()) || (virtualQuestGate && virtualQuestGate.isBlockingOverlayOpen())) {
     if (lockedGamePosition) {
       me.x = lockedGamePosition.x;
       me.y = lockedGamePosition.y;
@@ -1535,6 +1715,8 @@ function step() {
 // ---- 接続判定（エリア / 全体アナウンス / 近接）----
 let rtc = null;
 function isPeerInCallRange(o, wasInRange) {
+  if (!isPlayerInCurrentArea(o)) return false;
+  if (currentArea !== AREAS.OFFICE) return false;
   const mz = zoneOf(me);
   const oz = zoneOf(o);
   if (mz && oz) return mz === oz;
@@ -1579,7 +1761,9 @@ function updateConnections() {
     const o = others[id];
     const connected = rtc.isConnected(id);
     let want;
-    if (announcing || o.announcing) {
+    if (!isPlayerInCurrentArea(o)) {
+      want = false;
+    } else if (announcing || o.announcing) {
       want = true; // アナウンス中は全員と接続
     } else {
       want = isPeerInCallRange(o, connected);
@@ -1600,6 +1784,11 @@ function updateSpatialAudio() {
     const v = tile.querySelector("video");
     if (!v) continue;
     const o = others[id];
+    if (!isPlayerInCurrentArea(o)) {
+      v.volume = 0;
+      tile.style.opacity = "0.45";
+      continue;
+    }
     let vol;
     if (announcing || o.announcing || (mz && zoneOf(o) === mz)) {
       vol = 1; // 部屋内 / アナウンスは全員フル音量
@@ -1627,7 +1816,9 @@ function updateBanner() {
   if (!banner) return;
   const names = [];
   if (announcing) names.push(me.name);
-  for (const id in others) if (others[id].announcing) names.push(others[id].name || "誰か");
+  for (const id in others) {
+    if (others[id].announcing && isPlayerInCurrentArea(others[id])) names.push(others[id].name || "誰か");
+  }
   if (names.length) {
     banner.hidden = false;
     banner.textContent = "📢 " + names.join("、") + " がアナウンス中";
@@ -1637,7 +1828,7 @@ function updateBanner() {
 }
 function renderSummonList(listEl) {
   listEl.innerHTML = "";
-  const ids = Object.keys(others);
+  const ids = Object.keys(others).filter((id) => isPlayerInCurrentArea(others[id]));
   if (!ids.length) {
     listEl.innerHTML = '<div class="empty">他に誰もいません</div>';
     return;
@@ -1818,7 +2009,7 @@ function drawStampAnimations(now) {
     const stamp = activeStamps[index];
     const owner = stamp.ownerId === myId ? me : others[stamp.ownerId];
     const elapsed = now - stamp.startedAt;
-    if (!owner || elapsed >= STAMP_DURATION_MS) {
+    if (!owner || !isPlayerInCurrentArea(owner) || elapsed >= STAMP_DURATION_MS) {
       activeStamps.splice(index, 1);
       continue;
     }
@@ -1907,6 +2098,16 @@ function drawAvatar(p, isMe, connected) {
 }
 
 function drawFloor() {
+  if (currentArea === AREAS.OUTER_EDGE) {
+    if (outerEdgeImgReady) {
+      ctx.drawImage(outerEdgeImg, 0, 0, W, H);
+    } else {
+      ctx.fillStyle = "#0f242a";
+      ctx.fillRect(0, 0, W, H);
+    }
+    return;
+  }
+
   if (officeImgReady) {
     ctx.drawImage(officeImg, 0, 0, W, H);
   } else {
@@ -1971,6 +2172,7 @@ function drawZones() {
 }
 
 function render() {
+  const now = performance.now();
   // 画面クリア（スクリーン座標）
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = "#11131a";
@@ -1981,10 +2183,13 @@ function render() {
   ctx.setTransform(s, 0, 0, s, canvas.width / 2 - camera.x * s, canvas.height / 2 - camera.y * s);
 
   drawFloor();
-  drawZones();
+  if (currentArea === AREAS.OFFICE) {
+    drawZones();
+    if (virtualQuestGate) virtualQuestGate.draw(ctx, now);
+  }
 
   // 自分の通話範囲（部屋にいる時・アナウンス中は出さない）
-  if (!zoneOf(me) && !announcing) {
+  if (currentArea === AREAS.OFFICE && !zoneOf(me) && !announcing) {
     ctx.beginPath();
     ctx.arc(me.x, me.y, CALL_RADIUS, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(52, 152, 219, 0.10)";
@@ -1998,15 +2203,21 @@ function render() {
 
   if (DEBUG) drawDebug();
 
-  for (const id in others) {
-    const diag = rtc && rtc.getDiag(id);
-    drawAvatar(others[id], false, !!diag && diag.conn === "connected");
+  if (currentArea === AREAS.OFFICE) {
+    for (const id in others) {
+      if (!isPlayerInCurrentArea(others[id])) continue;
+      const diag = rtc && rtc.getDiag(id);
+      drawAvatar(others[id], false, !!diag && diag.conn === "connected");
+    }
   }
   drawAvatar(me, true, false);
-  drawStampAnimations(performance.now());
+  drawStampAnimations(now);
   // 吹き出しはアバターより後に描き、他のアイコンに隠れにくくする。
-  for (const id in others) {
-    drawMessageBubble(others[id], false);
+  if (currentArea === AREAS.OFFICE) {
+    for (const id in others) {
+      if (!isPlayerInCurrentArea(others[id])) continue;
+      drawMessageBubble(others[id], false);
+    }
   }
   drawMessageBubble(me, true);
 
@@ -2024,7 +2235,7 @@ function updateShareStage() {
     name = "あなた";
   } else {
     for (const id in others) {
-      if (others[id] && others[id].sharing) {
+      if (others[id] && others[id].sharing && isPlayerInCurrentArea(others[id])) {
         const tile = videoTiles.get(id);
         const v = tile && tile.querySelector("video");
         if (v && v.srcObject) {
@@ -2040,7 +2251,8 @@ function updateShareStage() {
   // 共有中タイルの枠ハイライト
   videoTiles.forEach((tile, id) => {
     const sharing =
-      (id === "__me__" && media && media.screenOn) || (others[id] && others[id].sharing);
+      (id === "__me__" && media && media.screenOn) ||
+      (others[id] && others[id].sharing && isPlayerInCurrentArea(others[id]));
     tile.classList.toggle("sharing", !!sharing);
   });
 
@@ -2187,7 +2399,7 @@ function isEditableTarget(target) {
 }
 
 function isBlockingOverlayOpen(excludeIds = []) {
-  return ["slime-game-modal", "crop-modal", "console", "chat-panel", "leave-confirm-dialog"].some((id) => {
+  return ["slime-game-modal", "virtual-quest-gate-modal", "crop-modal", "console", "chat-panel", "leave-confirm-dialog"].some((id) => {
     if (excludeIds.includes(id)) return false;
     const element = document.getElementById(id);
     return element && !element.hidden;
@@ -2288,6 +2500,130 @@ function setupSlimeGame() {
   });
 }
 
+function setupVirtualQuestGate() {
+  virtualQuestGate = new VirtualQuestGate({
+    worldWidth: W,
+    worldHeight: H,
+    getPlayer: () => me,
+    getDestinationParticipants: getVirtualQuestDestinationParticipants,
+    clearMovementInput,
+    showHud,
+    toast,
+    canOpen: () => !isBlockingOverlayOpen(["virtual-quest-gate-modal"]),
+  });
+  virtualQuestGate.setup();
+
+  window.addEventListener("virtualquest:prepare-departure", (event) => {
+    if (event.detail && event.detail.destinationId === AREAS.OUTER_EDGE) {
+      enterOuterEdgeArea();
+    }
+  });
+}
+
+function setupVirtualQuestStageControls() {
+  const participantsPanel = document.createElement("div");
+  participantsPanel.id = "virtual-quest-area-participants";
+  participantsPanel.hidden = true;
+  document.body.appendChild(participantsPanel);
+
+  const comingSoonPanel = document.createElement("div");
+  comingSoonPanel.id = "virtual-quest-coming-soon";
+  comingSoonPanel.hidden = true;
+
+  const comingSoonTitle = document.createElement("div");
+  comingSoonTitle.className = "virtual-quest-coming-soon-title";
+  const comingSoonMessage = document.createElement("div");
+  comingSoonMessage.className = "virtual-quest-coming-soon-message";
+  comingSoonPanel.appendChild(comingSoonTitle);
+  comingSoonPanel.appendChild(comingSoonMessage);
+  document.body.appendChild(comingSoonPanel);
+
+  const returnButton = document.createElement("button");
+  returnButton.id = "virtual-quest-return";
+  returnButton.type = "button";
+  returnButton.hidden = true;
+  returnButton.innerHTML = `<i class="ti ti-door-exit" aria-hidden="true"></i><span>オフィスへ戻る</span>`;
+  returnButton.addEventListener("click", returnToOfficeArea);
+  document.body.appendChild(returnButton);
+
+  addEventListener("keydown", (event) => {
+    if (
+      event.key === "Escape" &&
+      currentArea === AREAS.OUTER_EDGE &&
+      !event.repeat &&
+      !event.isComposing &&
+      !isEditableTarget(event.target) &&
+      !isBlockingOverlayOpen()
+    ) {
+      event.preventDefault();
+      returnToOfficeArea();
+    }
+  });
+}
+
+function enterOuterEdgeArea() {
+  if (currentArea === AREAS.OUTER_EDGE) return;
+  officeReturnPosition = { x: me.x, y: me.y };
+  currentArea = AREAS.OUTER_EDGE;
+  clearMovementInput();
+  me.x = OUTER_EDGE_ENTRY.x;
+  me.y = OUTER_EDGE_ENTRY.y;
+  camera.x = me.x;
+  camera.y = me.y;
+  setZoom(minZoom());
+  const returnButton = document.getElementById("virtual-quest-return");
+  if (returnButton) returnButton.hidden = false;
+  restorePresence();
+  updateOnlineStatus();
+  updateVirtualQuestComingSoon();
+  showHud();
+}
+
+function returnToOfficeArea() {
+  if (currentArea !== AREAS.OUTER_EDGE) return;
+  currentArea = AREAS.OFFICE;
+  clearMovementInput();
+  me.x = officeReturnPosition.x;
+  me.y = officeReturnPosition.y;
+  camera.x = me.x;
+  camera.y = me.y;
+  setZoom(fitZoom());
+  dirty = true;
+  const returnButton = document.getElementById("virtual-quest-return");
+  if (returnButton) returnButton.hidden = true;
+  restorePresence();
+  updateOnlineStatus();
+  updateVirtualQuestComingSoon();
+  showHud();
+}
+
+function nearestOuterEdgeComingSoonSpot() {
+  let nearest = null;
+  let nearestDistance = Infinity;
+  for (const spot of OUTER_EDGE_COMING_SOON_SPOTS) {
+    const distance = Math.hypot(me.x - spot.x, me.y - spot.y);
+    if (distance < nearestDistance) {
+      nearest = spot;
+      nearestDistance = distance;
+    }
+  }
+  return nearestDistance <= OUTER_EDGE_COMING_SOON_RANGE ? nearest : null;
+}
+
+function updateVirtualQuestComingSoon() {
+  const panel = document.getElementById("virtual-quest-coming-soon");
+  if (!panel) return;
+
+  const spot = currentArea === AREAS.OUTER_EDGE ? nearestOuterEdgeComingSoonSpot() : null;
+  panel.hidden = !spot;
+  if (!spot) return;
+
+  const title = panel.querySelector(".virtual-quest-coming-soon-title");
+  const message = panel.querySelector(".virtual-quest-coming-soon-message");
+  if (title) title.textContent = spot.title;
+  if (message) message.textContent = spot.message;
+}
+
 // ---- HUD 自動表示/非表示（無操作で隠す＋マップのタップ/クリックでトグル）----
 const HUD_AUTOHIDE_MS = 5000; // 無操作がこの時間続いたら自動非表示
 let hudVisible = true;
@@ -2301,6 +2637,7 @@ function isHudPaused() {
   const mp = document.getElementById("message-popover");
   const stamp = document.getElementById("stamp-popover");
   const leaveConfirm = document.getElementById("leave-confirm-dialog");
+  const questGate = document.getElementById("virtual-quest-gate-modal");
   const cs = document.getElementById("console");
   const cp = document.getElementById("chat-panel");
   return (
@@ -2309,6 +2646,7 @@ function isHudPaused() {
     (mp && !mp.hidden) ||
     (stamp && !stamp.hidden) ||
     (leaveConfirm && !leaveConfirm.hidden) ||
+    (questGate && !questGate.hidden) ||
     (cs && !cs.hidden) ||
     (cp && !cp.hidden) ||
     (slimeGame && slimeGame.isPlaying()) ||
@@ -2323,6 +2661,10 @@ function showHud() {
 function cancelTransientHudOperations() {
   const activeElement = document.activeElement;
   let shouldBlur = false;
+  if (virtualQuestGate && virtualQuestGate.isBlockingOverlayOpen()) {
+    virtualQuestGate.closeModal();
+    shouldBlur = true;
+  }
   for (const id of ["bg-popover", "stamp-popover", "message-popover", "summon-panel"]) {
     const panel = document.getElementById(id);
     if (!panel || panel.hidden) continue;
@@ -2395,6 +2737,8 @@ function loop(now) {
   const t = now || performance.now();
   step();
   updateGameArea(t);
+  if (virtualQuestGate && currentArea === AREAS.OFFICE) virtualQuestGate.update(t);
+  updateVirtualQuestComingSoon();
   flushPosition(t);
   updateProximityChimes();
   updateConnections();
@@ -3325,6 +3669,8 @@ function initAuthFlow() {
 // ---- 起動の振り分け ----
 setupControlTooltips();
 setupSlimeGame();
+setupVirtualQuestGate();
+setupVirtualQuestStageControls();
 
 if (ICETEST) {
   document.getElementById("signin").hidden = true;
