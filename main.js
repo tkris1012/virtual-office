@@ -1104,11 +1104,47 @@ function getVirtualQuestDestinationParticipants() {
   };
 }
 
+function renderQuestAreaParticipants() {
+  const panel = document.getElementById("virtual-quest-area-participants");
+  if (!panel) return;
+
+  const participants = getVirtualQuestDestinationParticipants()[AREAS.OUTER_EDGE] || [];
+  panel.hidden = currentArea !== AREAS.OUTER_EDGE;
+  panel.replaceChildren();
+  for (const participant of participants) {
+    const row = document.createElement("div");
+    row.className = "virtual-quest-area-participant";
+
+    const icon = document.createElement("div");
+    icon.className = "virtual-quest-area-participant-icon";
+    if (participant.iconType === "upload" && participant.iconUrl) {
+      const image = document.createElement("img");
+      image.src = participant.iconUrl;
+      image.alt = "";
+      icon.appendChild(image);
+    } else {
+      const emoji = document.createElement("span");
+      emoji.style.background = participant.bg;
+      emoji.textContent = participant.emoji;
+      icon.appendChild(emoji);
+    }
+
+    const name = document.createElement("div");
+    name.className = "virtual-quest-area-participant-name";
+    name.textContent = participant.name;
+
+    row.appendChild(icon);
+    row.appendChild(name);
+    panel.appendChild(row);
+  }
+}
+
 function updateOnlineStatus() {
   const officeCount = countPlayersInArea(AREAS.OFFICE);
   const questCount = countPlayersInArea(AREAS.OUTER_EDGE);
   document.getElementById("status").textContent = `社内: ${officeCount}人 / バーチャルクエスト: ${questCount}人`;
   if (virtualQuestGate) virtualQuestGate.setDestinationParticipants(getVirtualQuestDestinationParticipants());
+  renderQuestAreaParticipants();
 }
 
 function pruneStalePlayers() {
@@ -2426,6 +2462,11 @@ function setupVirtualQuestGate() {
 }
 
 function setupVirtualQuestStageControls() {
+  const participantsPanel = document.createElement("div");
+  participantsPanel.id = "virtual-quest-area-participants";
+  participantsPanel.hidden = true;
+  document.body.appendChild(participantsPanel);
+
   const returnButton = document.createElement("button");
   returnButton.id = "virtual-quest-return";
   returnButton.type = "button";
