@@ -66,12 +66,24 @@ const ctx = canvas.getContext("2d");
 // 既存コード(ゾーン/壁/描画)はワールド座標で書かれているため、名前は W/H のまま固定値にする。
 const W = 960; // WORLD_W（office3.png は 16:9）
 const H = 540; // WORLD_H
+const AREAS = Object.freeze({
+  OFFICE: "office",
+  OUTER_EDGE: "outer-edge",
+});
+const OUTER_EDGE_MIN_ZOOM_MULTIPLIER = 2.2;
+const OUTER_EDGE_ENTRY = { x: W * 0.5, y: H * 0.18 };
+let currentArea = AREAS.OFFICE;
+let officeReturnPosition = { x: W * 0.475, y: H * 0.9 };
 
 // ---- カメラ（各端末ローカル・通信しない）。アバターを追従しズームしてスクロール表示 ----
 const MOBILE = matchMedia("(pointer: coarse)").matches || window.innerWidth < 700;
 // ワールドが画面を覆う最小ズーム（これ未満だと黒余白が出る＝全画面表示の下限）
 function fitZoom() {
   return Math.max(window.innerWidth / W, window.innerHeight / H);
+}
+function minZoom() {
+  const base = fitZoom();
+  return currentArea === AREAS.OUTER_EDGE ? base * OUTER_EDGE_MIN_ZOOM_MULTIPLIER : base;
 }
 const camera = { x: W / 2, y: H / 2, zoom: fitZoom() }; // 既定は全画面フィット。ピンチ/ホイールで拡大可
 let dpr = 1;
@@ -99,7 +111,7 @@ function updateCamera() {
 
 // ---- 手動ズーム（PC=ホイール / スマホ=ピンチ）----
 function setZoom(z) {
-  camera.zoom = Math.max(fitZoom(), Math.min(4, z)); // 下限＝全画面フィット
+  camera.zoom = Math.max(minZoom(), Math.min(6, z)); // 下限＝全画面フィット。クエスト中は強めに寄る
 }
 canvas.addEventListener(
   "wheel",
@@ -148,6 +160,11 @@ let officeImgReady = false;
 officeImg.onload = () => (officeImgReady = true);
 officeImg.src = "office3.png";
 
+const outerEdgeImg = new Image();
+let outerEdgeImgReady = false;
+outerEdgeImg.onload = () => (outerEdgeImgReady = true);
+outerEdgeImg.src = "assets/virtual-quest-outer-edge.png";
+
 // 壁(通行不可)を正規化座標(0..1)で定義 → 実ピクセルへ変換。
 // ?debug のグリッドを見ながら office.png のレイアウトに合わせて調整する。
 const WALL_RECTS_N = [
@@ -184,6 +201,7 @@ const ZONES = [
 ];
 const GAME_AREA = { id: "slime-game", x: 0.59, y: 0.54, w: 0.24, h: 0.3 };
 function zoneOf(p) {
+  if (currentArea !== AREAS.OFFICE) return null;
   for (const z of ZONES) {
     const zx = z.x * W,
       zy = z.y * H,
@@ -194,6 +212,7 @@ function zoneOf(p) {
   return null;
 }
 function isInGameArea(p) {
+  if (currentArea !== AREAS.OFFICE) return false;
   const x = GAME_AREA.x * W;
   const y = GAME_AREA.y * H;
   const width = GAME_AREA.w * W;
@@ -1393,6 +1412,10 @@ let dirty = false;
 let lastSent = 0;
 function flushPosition(now) {
   if (!meRef) return;
+  if (currentArea !== AREAS.OFFICE) {
+    dirty = false;
+    return;
+  }
   if (dirty && now - lastSent > 80) {
     update(meRef, { x: Math.round(me.x), y: Math.round(me.y), ts: Date.now() });
     lastSent = now;
@@ -1538,6 +1561,7 @@ function step() {
 // ---- 接続判定（エリア / 全体アナウンス / 近接）----
 let rtc = null;
 function isPeerInCallRange(o, wasInRange) {
+  if (currentArea !== AREAS.OFFICE) return false;
   const mz = zoneOf(me);
   const oz = zoneOf(o);
   if (mz && oz) return mz === oz;
@@ -1910,6 +1934,16 @@ function drawAvatar(p, isMe, connected) {
 }
 
 function drawFloor() {
+  if (currentArea === AREAS.OUTER_EDGE) {
+    if (outerEdgeImgReady) {
+      ctx.drawImage(outerEdgeImg, 0, 0, W, H);
+    } else {
+      ctx.fillStyle = "#0f242a";
+      ctx.fillRect(0, 0, W, H);
+    }
+    return;
+  }
+
   if (officeImgReady) {
     ctx.drawImage(officeImg, 0, 0, W, H);
   } else {
@@ -1985,11 +2019,13 @@ function render() {
   ctx.setTransform(s, 0, 0, s, canvas.width / 2 - camera.x * s, canvas.height / 2 - camera.y * s);
 
   drawFloor();
-  drawZones();
-  if (virtualQuestGate) virtualQuestGate.draw(ctx, now);
+  if (currentArea === AREAS.OFFICE) {
+    drawZones();
+    if (virtualQuestGate) virtualQuestGate.draw(ctx, now);
+  }
 
   // 自分の通話範囲（部屋にいる時・アナウンス中は出さない）
-  if (!zoneOf(me) && !announcing) {
+  if (currentArea === AREAS.OFFICE && !zoneOf(me) && !announcing) {
     ctx.beginPath();
     ctx.arc(me.x, me.y, CALL_RADIUS, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(52, 152, 219, 0.10)";
@@ -2003,15 +2039,19 @@ function render() {
 
   if (DEBUG) drawDebug();
 
-  for (const id in others) {
-    const diag = rtc && rtc.getDiag(id);
-    drawAvatar(others[id], false, !!diag && diag.conn === "connected");
+  if (currentArea === AREAS.OFFICE) {
+    for (const id in others) {
+      const diag = rtc && rtc.getDiag(id);
+      drawAvatar(others[id], false, !!diag && diag.conn === "connected");
+    }
   }
   drawAvatar(me, true, false);
   drawStampAnimations(now);
   // 吹き出しはアバターより後に描き、他のアイコンに隠れにくくする。
-  for (const id in others) {
-    drawMessageBubble(others[id], false);
+  if (currentArea === AREAS.OFFICE) {
+    for (const id in others) {
+      drawMessageBubble(others[id], false);
+    }
   }
   drawMessageBubble(me, true);
 
@@ -2306,8 +2346,64 @@ function setupVirtualQuestGate() {
   virtualQuestGate.setup();
 
   window.addEventListener("virtualquest:prepare-departure", (event) => {
-    console.info("バーチャルクエスト出発準備:", event.detail);
+    if (event.detail && event.detail.destinationId === AREAS.OUTER_EDGE) {
+      enterOuterEdgeArea();
+    }
   });
+}
+
+function setupVirtualQuestStageControls() {
+  const returnButton = document.createElement("button");
+  returnButton.id = "virtual-quest-return";
+  returnButton.type = "button";
+  returnButton.hidden = true;
+  returnButton.innerHTML = `<i class="ti ti-door-exit" aria-hidden="true"></i><span>オフィスへ戻る</span>`;
+  returnButton.addEventListener("click", returnToOfficeArea);
+  document.body.appendChild(returnButton);
+
+  addEventListener("keydown", (event) => {
+    if (
+      event.key === "Escape" &&
+      currentArea === AREAS.OUTER_EDGE &&
+      !event.repeat &&
+      !event.isComposing &&
+      !isEditableTarget(event.target) &&
+      !isBlockingOverlayOpen()
+    ) {
+      event.preventDefault();
+      returnToOfficeArea();
+    }
+  });
+}
+
+function enterOuterEdgeArea() {
+  if (currentArea === AREAS.OUTER_EDGE) return;
+  officeReturnPosition = { x: me.x, y: me.y };
+  currentArea = AREAS.OUTER_EDGE;
+  clearMovementInput();
+  me.x = OUTER_EDGE_ENTRY.x;
+  me.y = OUTER_EDGE_ENTRY.y;
+  camera.x = me.x;
+  camera.y = me.y;
+  setZoom(minZoom());
+  const returnButton = document.getElementById("virtual-quest-return");
+  if (returnButton) returnButton.hidden = false;
+  showHud();
+}
+
+function returnToOfficeArea() {
+  if (currentArea !== AREAS.OUTER_EDGE) return;
+  currentArea = AREAS.OFFICE;
+  clearMovementInput();
+  me.x = officeReturnPosition.x;
+  me.y = officeReturnPosition.y;
+  camera.x = me.x;
+  camera.y = me.y;
+  setZoom(camera.zoom);
+  dirty = true;
+  const returnButton = document.getElementById("virtual-quest-return");
+  if (returnButton) returnButton.hidden = true;
+  showHud();
 }
 
 // ---- HUD 自動表示/非表示（無操作で隠す＋マップのタップ/クリックでトグル）----
@@ -2423,7 +2519,7 @@ function loop(now) {
   const t = now || performance.now();
   step();
   updateGameArea(t);
-  if (virtualQuestGate) virtualQuestGate.update(t);
+  if (virtualQuestGate && currentArea === AREAS.OFFICE) virtualQuestGate.update(t);
   flushPosition(t);
   updateProximityChimes();
   updateConnections();
@@ -3355,6 +3451,7 @@ function initAuthFlow() {
 setupControlTooltips();
 setupSlimeGame();
 setupVirtualQuestGate();
+setupVirtualQuestStageControls();
 
 if (ICETEST) {
   document.getElementById("signin").hidden = true;

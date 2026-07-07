@@ -207,7 +207,7 @@ export class VirtualQuestGate {
 
     setTimeout(() => {
       this.closeModal();
-      this.toast("外縁エリアへの遷移直前まで準備しました");
+      this.toast("外縁エリアへ出発しました");
     }, 450);
   }
 
