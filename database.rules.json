@@ -6,6 +6,13 @@
         ".write": "auth != null && auth.uid === $uid"
       }
     },
+    "backgroundSettings": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['mode']) && newData.child('mode').isString() && (newData.child('mode').val() === 'none' || newData.child('mode').val() === 'blur' || newData.child('mode').val() === 'image') && (!newData.hasChild('blurAmount') || newData.child('blurAmount').isNumber()) && (!newData.hasChild('imageUrl') || (newData.child('imageUrl').isString() && newData.child('imageUrl').val().length <= 2000000))"
+      }
+    },
     "rooms": {
       "$room": {
         "meta": {
