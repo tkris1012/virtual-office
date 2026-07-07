@@ -910,7 +910,7 @@ function setupControls(media) {
       }
       if (shortcutKey === "q") {
         event.preventDefault();
-        leaveRoom();
+        showLeaveConfirmDialog();
         return;
       }
     }
@@ -2147,7 +2147,7 @@ function isEditableTarget(target) {
 }
 
 function isBlockingOverlayOpen(excludeIds = []) {
-  return ["slime-game-modal", "crop-modal", "console", "chat-panel"].some((id) => {
+  return ["slime-game-modal", "crop-modal", "console", "chat-panel", "leave-confirm-dialog"].some((id) => {
     if (excludeIds.includes(id)) return false;
     const element = document.getElementById(id);
     return element && !element.hidden;
@@ -2260,6 +2260,7 @@ function isHudPaused() {
   const sp = document.getElementById("summon-panel");
   const mp = document.getElementById("message-popover");
   const stamp = document.getElementById("stamp-popover");
+  const leaveConfirm = document.getElementById("leave-confirm-dialog");
   const cs = document.getElementById("console");
   const cp = document.getElementById("chat-panel");
   return (
@@ -2267,6 +2268,7 @@ function isHudPaused() {
     (sp && !sp.hidden) ||
     (mp && !mp.hidden) ||
     (stamp && !stamp.hidden) ||
+    (leaveConfirm && !leaveConfirm.hidden) ||
     (cs && !cs.hidden) ||
     (cp && !cp.hidden) ||
     (slimeGame && slimeGame.isPlaying()) ||
@@ -2550,11 +2552,61 @@ async function leaveRoom() {
   } catch (_) {}
   location.href = location.origin + location.pathname;
 }
+let leaveConfirmDialogWired = false;
+function closeLeaveConfirmDialog(returnFocus = true) {
+  const dialog = document.getElementById("leave-confirm-dialog");
+  if (!dialog || dialog.hidden) return;
+  dialog.hidden = true;
+  if (returnFocus) document.getElementById("btn-leave")?.focus();
+}
+function showLeaveConfirmDialog() {
+  const dialog = document.getElementById("leave-confirm-dialog");
+  const card = dialog?.querySelector(".confirm-dialog-card");
+  if (!dialog || !card) {
+    leaveRoom();
+    return;
+  }
+  cancelTransientHudOperations();
+  showHud();
+  dialog.hidden = false;
+  card.focus();
+  noteHudActivity();
+}
+function setupLeaveConfirmDialog() {
+  if (leaveConfirmDialogWired) return;
+  leaveConfirmDialogWired = true;
+
+  const dialog = document.getElementById("leave-confirm-dialog");
+  const yesBtn = document.getElementById("leave-confirm-yes");
+  const noBtn = document.getElementById("leave-confirm-no");
+  if (!dialog || !yesBtn || !noBtn) return;
+
+  yesBtn.addEventListener("click", leaveRoom);
+  noBtn.addEventListener("click", () => closeLeaveConfirmDialog());
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) closeLeaveConfirmDialog();
+  });
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (dialog.hidden) return;
+      if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        leaveRoom();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        closeLeaveConfirmDialog();
+      }
+    },
+    true
+  );
+}
 function wireRoomButtons() {
   const inviteBtn = document.getElementById("btn-invite");
   const leaveBtn = document.getElementById("btn-leave");
+  setupLeaveConfirmDialog();
   if (inviteBtn) inviteBtn.addEventListener("click", copyInvite);
-  if (leaveBtn) leaveBtn.addEventListener("click", leaveRoom);
+  if (leaveBtn) leaveBtn.addEventListener("click", showLeaveConfirmDialog);
 }
 
 function setupLobby() {

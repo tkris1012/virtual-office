@@ -102,6 +102,29 @@
     <button id="btn-leave" class="ctrl" type="button" aria-label="退出（ショートカット: Q）" aria-keyshortcuts="Q" data-help="現在のルームから退出（Q）"><i class="ti ti-logout" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">Q</span></button>
   </div>
 
+  <!-- 退出確認 -->
+  <div
+    id="leave-confirm-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="leave-confirm-title"
+    aria-describedby="leave-confirm-message"
+    hidden
+  >
+    <section class="confirm-dialog-card" tabindex="-1">
+      <h2 id="leave-confirm-title">退出しますか？</h2>
+      <p id="leave-confirm-message">現在のルームから退出して、ロビーへ戻ります。</p>
+      <div class="confirm-dialog-actions">
+        <button id="leave-confirm-no" class="ctrl-text" type="button">
+          いいえ <kbd>Esc</kbd>
+        </button>
+        <button id="leave-confirm-yes" class="ctrl-text danger" type="button">
+          はい <kbd>Enter</kbd>
+        </button>
+      </div>
+    </section>
+  </div>
+
   <!-- 下部コントロール共通ツールチップ -->
   <div id="control-tooltip" role="tooltip" hidden>
     <strong id="control-tooltip-title"></strong>
