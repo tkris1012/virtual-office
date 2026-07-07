@@ -769,8 +769,10 @@ function setupControls(media) {
       bgNote.textContent = "";
     }
     syncBgUI();
+    saveBackgroundPreference();
   });
   blurRange.addEventListener("input", () => media.setBlurAmount(blurRange.value));
+  blurRange.addEventListener("change", () => saveBackgroundPreference()); // ドラッグ終了時だけ保存（連続書き込み防止）
   bgImageBtn.addEventListener("click", () => bgFile.click());
   bgFile.addEventListener("change", () => {
     const file = bgFile.files && bgFile.files[0];
@@ -784,12 +786,50 @@ function setupControls(media) {
       } else {
         bgMode.value = "image";
         bgNote.textContent = "バーチャル背景: 画像を設定しました";
+        bgImageDataUrl = compressBackgroundImage(img);
       }
       syncBgUI();
+      saveBackgroundPreference();
     };
     img.onerror = () => (bgNote.textContent = "⚠ 画像の読み込みに失敗しました");
     img.src = URL.createObjectURL(file);
   });
+
+  // 前回の背景設定を復元（Issue #7）。カメラ初期化後・非同期で行い起動を遅らせない。
+  (async () => {
+    const pref = await loadBackgroundPreference(myId);
+    if (!pref || pref.mode === "none") return;
+    if (Number.isFinite(pref.blurAmount)) {
+      blurRange.value = pref.blurAmount;
+      media.setBlurAmount(pref.blurAmount);
+    }
+    if (pref.mode === "image" && pref.imageUrl) {
+      const img = new Image();
+      img.onload = async () => {
+        bgImageDataUrl = pref.imageUrl;
+        const res = await media.setBackground("image", img);
+        if (res.error) {
+          toast("⚠ 前回のバーチャル背景を復元できませんでした");
+        } else {
+          bgMode.value = "image";
+        }
+        syncBgUI();
+      };
+      img.onerror = () => {
+        toast("⚠ 前回の背景画像を復元できませんでした");
+        syncBgUI();
+      };
+      img.src = pref.imageUrl;
+    } else if (pref.mode === "blur") {
+      const res = await media.setBackground("blur");
+      if (res.error) {
+        toast("⚠ 前回の背景設定を復元できませんでした");
+      } else {
+        bgMode.value = "blur";
+      }
+      syncBgUI();
+    }
+  })();
 
   // --- 集合（特定の人を呼ぶ・ポップオーバー）---
   summonBtn.addEventListener("click", () => {
@@ -2827,6 +2867,79 @@ function saveProfile() {
   const lobbyName = document.getElementById("lobby-name");
   if (lobbyName && document.activeElement !== lobbyName) lobbyName.value = data.displayName;
   renderConsolePreview();
+}
+
+// =============================================================
+//  バーチャル背景の設定を保存/復元（Issue #7）
+//  保存先は users/{uid} とは別ノード（プロフィール保存が set() で
+//  users/{uid} を丸ごと上書きするため、同じノードに置くと消えてしまう）。
+//  背景画像は自分専用の設定＝他ユーザーへ配信しないので .read も本人限定。
+// =============================================================
+let bgImageDataUrl = ""; // 直近にアップロードした背景画像（圧縮済みdata URL）。保存/モード切替の再利用に使う。
+
+function backgroundPrefRef(uid) {
+  return ref(db, `backgroundSettings/${uid}`);
+}
+function localBackgroundKey(uid) {
+  return "vo_background_" + uid;
+}
+function readLocalBackgroundPref(uid) {
+  try {
+    const raw = localStorage.getItem(localBackgroundKey(uid));
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
+function writeLocalBackgroundPref(uid, data) {
+  try {
+    localStorage.setItem(localBackgroundKey(uid), JSON.stringify(data));
+  } catch (_) {}
+}
+
+// アップロード画像を「動画背景として十分な解像度」に圧縮してdata URL化する
+// （アバターの192pxより大きめ。他ユーザーへは配信されずRTDBの本人ノードのみに
+//  保存するため、アバターアイコンほどサイズをシビアに削る必要はない）。
+function compressBackgroundImage(img, maxDim = 960, quality = 0.82) {
+  const iw = img.naturalWidth || img.width || 0;
+  const ih = img.naturalHeight || img.height || 0;
+  if (!iw || !ih) return "";
+  const scale = Math.min(1, maxDim / Math.max(iw, ih));
+  const w = Math.max(1, Math.round(iw * scale));
+  const h = Math.max(1, Math.round(ih * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
+// クラウドと端末控えの「新しい方」を採用する（プロフィールと同じ考え方）。
+async function loadBackgroundPreference(uid) {
+  let cloud = null;
+  try {
+    const snap = await get(backgroundPrefRef(uid));
+    if (snap.exists()) cloud = snap.val();
+  } catch (e) {
+    console.warn("背景設定の読込失敗:", e);
+  }
+  const local = readLocalBackgroundPref(uid);
+  if (cloud && local) return (local.updatedAt || 0) > (cloud.updatedAt || 0) ? local : cloud;
+  return cloud || local || null;
+}
+
+// media/UIの現在値をそのまま保存する（実際に適用された結果を保存＝復元時に再現しやすい）。
+function saveBackgroundPreference() {
+  if (!myId || !media) return;
+  const data = {
+    mode: media.mode || "none",
+    blurAmount: Number.isFinite(media.blurAmount) ? media.blurAmount : 8,
+    imageUrl: bgImageDataUrl || "", // モードに関わらず保持＝再アップロードせず image に戻せる
+    updatedAt: Date.now(),
+  };
+  writeLocalBackgroundPref(myId, data);
+  set(backgroundPrefRef(myId), data).catch((e) => console.warn("背景設定の保存失敗:", e));
 }
 
 // =============================================================
