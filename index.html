@@ -88,10 +88,12 @@
 
   <!-- 下中央: アイコン操作バー -->
   <div id="controls">
-    <button id="btn-cam" class="ctrl" type="button" aria-label="カメラ（ショートカット: V）" aria-keyshortcuts="V" data-help="自分の映像をオン／オフ（V）"><i class="ti ti-video" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">V</span></button>
+    <div class="ctrl-split">
+      <button id="btn-cam" class="ctrl" type="button" aria-label="カメラ（ショートカット: V）" aria-keyshortcuts="V" data-help="自分の映像をオン／オフ（V）"><i class="ti ti-video" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">V</span></button>
+      <button id="btn-bg" class="ctrl ctrl-arrow" type="button" aria-label="背景オプションを開く" aria-haspopup="true" data-help="ぼかし・バーチャル背景を設定"><i class="ti ti-chevron-up" aria-hidden="true"></i></button>
+    </div>
     <button id="btn-mic" class="ctrl" type="button" aria-label="マイク（ショートカット: B）" aria-keyshortcuts="B" data-help="自分の音声をオン／オフ（B）"><i class="ti ti-microphone" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">B</span></button>
     <button id="btn-screen" class="ctrl" type="button" aria-label="画面共有" data-help="自分の画面を参加者へ共有"><i class="ti ti-screen-share" aria-hidden="true"></i></button>
-    <button id="btn-bg" class="ctrl" type="button" aria-label="背景" data-help="ぼかし・バーチャル背景を設定"><i class="ti ti-wallpaper" aria-hidden="true"></i></button>
     <button id="btn-announce" class="ctrl" type="button" aria-label="アナウンス（ショートカット: R）" aria-keyshortcuts="R" aria-pressed="false" data-help="ルーム全員へ音声を配信（R）"><i class="ti ti-speakerphone" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">R</span></button>
     <button id="btn-summon" class="ctrl" type="button" aria-label="集合（ショートカット: T）" aria-keyshortcuts="T" data-help="選択したメンバーを自分の場所へ呼ぶ（T）"><i class="ti ti-users" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">T</span></button>
     <button id="btn-message" class="ctrl" type="button" aria-label="ひとことメッセージ（ショートカット: M）" aria-keyshortcuts="M" data-help="アバター上に短いメッセージを表示（M）"><i class="ti ti-message-circle" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">M</span></button>
