@@ -1,5 +1,6 @@
 /* ---- バーチャルクエスト入口 ---- */
-#virtual-quest-prompt {
+#virtual-quest-prompt,
+#virtual-quest-return-prompt {
   position: fixed;
   left: 50%;
   bottom: 92px;
@@ -16,7 +17,8 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   transform: translateX(-50%);
 }
-#virtual-quest-prompt[hidden] { display: none; }
+#virtual-quest-prompt[hidden],
+#virtual-quest-return-prompt[hidden] { display: none; }
 .virtual-quest-prompt-copy {
   display: flex;
   flex-direction: column;
@@ -38,6 +40,7 @@
   border-radius: 6px;
 }
 #virtual-quest-prompt button,
+#virtual-quest-return-prompt button,
 .virtual-quest-depart {
   border: 0;
   color: #061f22;
@@ -45,11 +48,13 @@
   font-weight: 700;
   cursor: pointer;
 }
-#virtual-quest-prompt button {
+#virtual-quest-prompt button,
+#virtual-quest-return-prompt button {
   padding: 8px 13px;
   border-radius: 9px;
 }
 #virtual-quest-prompt button:hover,
+#virtual-quest-return-prompt button:hover,
 .virtual-quest-depart:hover { background: #82f1e2; }
 
 #virtual-quest-gate-modal {
@@ -359,7 +364,8 @@ body.virtual-quest-open #joystick {
 }
 
 @media (max-width: 600px) {
-  #virtual-quest-prompt {
+  #virtual-quest-prompt,
+  #virtual-quest-return-prompt {
     bottom: 82px;
   }
   .virtual-quest-prompt-key { display: none; }
