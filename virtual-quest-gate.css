@@ -1,6 +1,8 @@
 /* ---- バーチャルクエスト入口 ---- */
 #virtual-quest-prompt,
-#virtual-quest-return-prompt {
+#virtual-quest-return-prompt,
+#office-extension-enter-prompt,
+#office-extension-return-prompt {
   position: fixed;
   left: 50%;
   bottom: 92px;
@@ -18,7 +20,9 @@
   transform: translateX(-50%);
 }
 #virtual-quest-prompt[hidden],
-#virtual-quest-return-prompt[hidden] { display: none; }
+#virtual-quest-return-prompt[hidden],
+#office-extension-enter-prompt[hidden],
+#office-extension-return-prompt[hidden] { display: none; }
 .virtual-quest-prompt-copy {
   display: flex;
   flex-direction: column;
@@ -41,6 +45,8 @@
 }
 #virtual-quest-prompt button,
 #virtual-quest-return-prompt button,
+#office-extension-enter-prompt button,
+#office-extension-return-prompt button,
 .virtual-quest-depart {
   border: 0;
   color: #061f22;
@@ -49,12 +55,16 @@
   cursor: pointer;
 }
 #virtual-quest-prompt button,
-#virtual-quest-return-prompt button {
+#virtual-quest-return-prompt button,
+#office-extension-enter-prompt button,
+#office-extension-return-prompt button {
   padding: 8px 13px;
   border-radius: 9px;
 }
 #virtual-quest-prompt button:hover,
 #virtual-quest-return-prompt button:hover,
+#office-extension-enter-prompt button:hover,
+#office-extension-return-prompt button:hover,
 .virtual-quest-depart:hover { background: #82f1e2; }
 
 #virtual-quest-gate-modal {
@@ -311,7 +321,8 @@ body.virtual-quest-open #joystick {
   white-space: nowrap;
 }
 
-#virtual-quest-coming-soon {
+#virtual-quest-coming-soon,
+#office-extension-locked-message {
   position: fixed;
   left: 50%;
   bottom: 92px;
@@ -325,7 +336,8 @@ body.virtual-quest-open #joystick {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38);
   transform: translateX(-50%);
 }
-#virtual-quest-coming-soon[hidden] { display: none; }
+#virtual-quest-coming-soon[hidden],
+#office-extension-locked-message[hidden] { display: none; }
 .virtual-quest-coming-soon-title {
   color: #70eadc;
   font-size: 10px;
@@ -365,7 +377,9 @@ body.virtual-quest-open #joystick {
 
 @media (max-width: 600px) {
   #virtual-quest-prompt,
-  #virtual-quest-return-prompt {
+  #virtual-quest-return-prompt,
+  #office-extension-enter-prompt,
+  #office-extension-return-prompt {
     bottom: 82px;
   }
   .virtual-quest-prompt-key { display: none; }
