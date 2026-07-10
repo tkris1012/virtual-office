@@ -74,8 +74,13 @@ const AREA_LABELS = Object.freeze({
   [AREAS.OFFICE]: "社内",
   [AREAS.OUTER_EDGE]: "外縁エリア",
 });
-const OUTER_EDGE_MIN_ZOOM_MULTIPLIER = 2.2;
 const OUTER_EDGE_ENTRY = { x: W * 0.5, y: H * 0.18 };
+const OUTER_EDGE_RETURN_GATE = Object.freeze({
+  x: W * 0.41,
+  y: H * 0.03,
+  w: W * 0.18,
+  h: H * 0.19,
+});
 const OUTER_EDGE_COMING_SOON_RANGE = 54;
 const OUTER_EDGE_COMING_SOON_SPOTS = Object.freeze([
   {
@@ -145,8 +150,7 @@ function fitZoom() {
   return Math.max(window.innerWidth / W, window.innerHeight / H);
 }
 function minZoom() {
-  const base = fitZoom();
-  return currentArea === AREAS.OUTER_EDGE ? base * OUTER_EDGE_MIN_ZOOM_MULTIPLIER : base;
+  return fitZoom();
 }
 const camera = { x: W / 2, y: H / 2, zoom: fitZoom() }; // 既定は全画面フィット。ピンチ/ホイールで拡大可
 let dpr = 1;
@@ -174,7 +178,7 @@ function updateCamera() {
 
 // ---- 手動ズーム（PC=ホイール / スマホ=ピンチ）----
 function setZoom(z) {
-  camera.zoom = Math.max(minZoom(), Math.min(6, z)); // 下限＝全画面フィット。クエスト中は強めに寄る
+  camera.zoom = Math.max(minZoom(), Math.min(6, z)); // 下限＝全画面フィット
 }
 canvas.addEventListener(
   "wheel",
@@ -2526,6 +2530,20 @@ function setupVirtualQuestStageControls() {
   participantsPanel.hidden = true;
   document.body.appendChild(participantsPanel);
 
+  const returnPrompt = document.createElement("div");
+  returnPrompt.id = "virtual-quest-return-prompt";
+  returnPrompt.hidden = true;
+  returnPrompt.innerHTML = `
+    <div class="virtual-quest-prompt-copy">
+      <strong>外縁ゲート</strong>
+      <span>オフィスへ帰還できます</span>
+    </div>
+    <span class="virtual-quest-prompt-key">F</span>
+    <button type="button">帰還する</button>
+  `;
+  returnPrompt.querySelector("button").addEventListener("click", returnToOfficeArea);
+  document.body.appendChild(returnPrompt);
+
   const comingSoonPanel = document.createElement("div");
   comingSoonPanel.id = "virtual-quest-coming-soon";
   comingSoonPanel.hidden = true;
@@ -2558,7 +2576,28 @@ function setupVirtualQuestStageControls() {
       event.preventDefault();
       returnToOfficeArea();
     }
+    if (
+      event.key.toLowerCase() === "f" &&
+      isPlayerInOuterEdgeReturnGate() &&
+      !event.repeat &&
+      !event.isComposing &&
+      !isEditableTarget(event.target) &&
+      !isBlockingOverlayOpen()
+    ) {
+      event.preventDefault();
+      returnToOfficeArea();
+    }
   });
+}
+
+function isPlayerInOuterEdgeReturnGate() {
+  return (
+    currentArea === AREAS.OUTER_EDGE &&
+    me.x >= OUTER_EDGE_RETURN_GATE.x &&
+    me.x <= OUTER_EDGE_RETURN_GATE.x + OUTER_EDGE_RETURN_GATE.w &&
+    me.y >= OUTER_EDGE_RETURN_GATE.y &&
+    me.y <= OUTER_EDGE_RETURN_GATE.y + OUTER_EDGE_RETURN_GATE.h
+  );
 }
 
 function enterOuterEdgeArea() {
@@ -2570,12 +2609,12 @@ function enterOuterEdgeArea() {
   me.y = OUTER_EDGE_ENTRY.y;
   camera.x = me.x;
   camera.y = me.y;
-  setZoom(minZoom());
   const returnButton = document.getElementById("virtual-quest-return");
   if (returnButton) returnButton.hidden = false;
   restorePresence();
   updateOnlineStatus();
   updateVirtualQuestComingSoon();
+  updateVirtualQuestReturnPrompt();
   showHud();
 }
 
@@ -2587,13 +2626,13 @@ function returnToOfficeArea() {
   me.y = officeReturnPosition.y;
   camera.x = me.x;
   camera.y = me.y;
-  setZoom(fitZoom());
   dirty = true;
   const returnButton = document.getElementById("virtual-quest-return");
   if (returnButton) returnButton.hidden = true;
   restorePresence();
   updateOnlineStatus();
   updateVirtualQuestComingSoon();
+  updateVirtualQuestReturnPrompt();
   showHud();
 }
 
@@ -2622,6 +2661,12 @@ function updateVirtualQuestComingSoon() {
   const message = panel.querySelector(".virtual-quest-coming-soon-message");
   if (title) title.textContent = spot.title;
   if (message) message.textContent = spot.message;
+}
+
+function updateVirtualQuestReturnPrompt() {
+  const prompt = document.getElementById("virtual-quest-return-prompt");
+  if (!prompt) return;
+  prompt.hidden = !isPlayerInOuterEdgeReturnGate() || isBlockingOverlayOpen();
 }
 
 // ---- HUD 自動表示/非表示（無操作で隠す＋マップのタップ/クリックでトグル）----
@@ -2739,6 +2784,7 @@ function loop(now) {
   updateGameArea(t);
   if (virtualQuestGate && currentArea === AREAS.OFFICE) virtualQuestGate.update(t);
   updateVirtualQuestComingSoon();
+  updateVirtualQuestReturnPrompt();
   flushPosition(t);
   updateProximityChimes();
   updateConnections();
