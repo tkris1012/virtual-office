@@ -149,7 +149,7 @@ const OFFICE_EXTENSION_SOURCE_ASPECT = 2173 / 724;
 const OFFICE_EXTENSION_ENTRY_N = Object.freeze({ x: 0.5, y: 0.78 });
 const OFFICE_EXTENSION_DOOR = Object.freeze({
   x: W * 0.505,
-  y: H * 0.13,
+  y: H * 0.0,
   w: W * 0.08,
   h: H * 0.13,
 });
@@ -202,15 +202,13 @@ function resizeCanvas() {
 new ResizeObserver(resizeCanvas).observe(canvas);
 
 function updateCamera() {
-  // アバターへスムーズ追従
+  // 横方向は従来どおりなめらかに追従し、縦方向はHUDと重ならないよう常に中央へ置く。
   camera.x += (me.x - camera.x) * 0.15;
-  camera.y += (me.y - camera.y) * 0.15;
-  // マップ外の黒余白を出さないようクランプ（ビューがワールドより大きければ中央寄せ）
+  camera.y = me.y;
+
   const s = camera.zoom * dpr;
   const halfW = canvas.width / 2 / s;
-  const halfH = canvas.height / 2 / s;
   camera.x = halfW * 2 >= W ? W / 2 : Math.max(halfW, Math.min(W - halfW, camera.x));
-  camera.y = halfH * 2 >= H ? H / 2 : Math.max(halfH, Math.min(H - halfH, camera.y));
 }
 
 // ---- 手動ズーム（PC=ホイール / スマホ=ピンチ）----
