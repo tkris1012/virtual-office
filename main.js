@@ -1805,6 +1805,8 @@ function step() {
     dy = joy.dy;
   }
 
+  if (SPRITE_TEST) updateSpriteFacing(me, dx, dy);
+
   if (dx || dy) {
     noteHudActivity(); // 移動操作で HUD を表示維持＆自動非表示タイマーをリセット
     // X/Y を別々に判定 → 壁沿いに滑れる
@@ -2007,6 +2009,63 @@ function drawImageCover(img, cx, cy, size) {
 }
 
 const AVATAR_R = 16;
+
+// ---- [試作/テスト用] ドット絵スプライトアバター（?spritetest で有効化。自分の見た目にのみ適用） ----
+const SPRITE_TEST = new URLSearchParams(location.search).has("spritetest");
+const spriteImg = new Image();
+let spriteImgReady = false;
+spriteImg.onload = () => (spriteImgReady = true);
+spriteImg.src = "assets/sprites/男性_ドット絵_スプライト.png";
+const SPRITE_COLS = 4;
+const SPRITE_ROWS = 4;
+// 3行目が本当に「右向き」か未確認のため、右向きは2行目（左向き）を左右反転して代用する
+const SPRITE_ROW_BY_FACING = { down: 0, left: 1, right: 1, up: 3 };
+const SPRITE_FRAME_MS = 130;
+let lastSpriteFrameAt = 0;
+
+function updateSpriteFacing(p, dx, dy) {
+  if (dx || dy) {
+    p.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up";
+    p.spriteMoving = true;
+  } else {
+    p.spriteMoving = false;
+  }
+}
+
+function updateSpriteAnimation(now) {
+  if (!me.spriteMoving) {
+    me.spriteFrame = 0;
+    return;
+  }
+  if (now - lastSpriteFrameAt > SPRITE_FRAME_MS) {
+    me.spriteFrame = ((me.spriteFrame || 0) + 1) % SPRITE_COLS;
+    lastSpriteFrameAt = now;
+  }
+}
+
+// 自分のアバターだけスプライト描画に差し替える（他人・DBスキーマには一切影響しない試作）
+function drawSpriteAvatar(p) {
+  if (!spriteImgReady) return false;
+  const iw = spriteImg.naturalWidth;
+  const ih = spriteImg.naturalHeight;
+  if (!iw || !ih) return false;
+  const frameW = iw / SPRITE_COLS;
+  const frameH = ih / SPRITE_ROWS;
+  const row = SPRITE_ROW_BY_FACING[p.facing || "down"];
+  const col = p.spriteFrame || 0;
+  const destH = AVATAR_R * 3.6;
+  const destW = destH * (frameW / frameH);
+  const flip = p.facing === "right";
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false; // ドット絵をぼかさない
+  ctx.translate(p.x, p.y + AVATAR_R * 0.4); // だいたい足元がpの当たり判定に来るよう調整
+  if (flip) ctx.scale(-1, 1);
+  ctx.drawImage(spriteImg, col * frameW, row * frameH, frameW, frameH, -destW / 2, -destH, destW, destH);
+  ctx.restore();
+  return true;
+}
+
 const MESSAGE_MAX_WIDTH = 120;
 const MESSAGE_PADDING_X = 5;
 const MESSAGE_PADDING_Y = 4;
@@ -2160,40 +2219,45 @@ function drawAvatar(p, isMe, connected) {
     ctx.stroke();
   }
 
-  // アイコン本体（円形にクリップして描画）
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-  ctx.clip();
+  // [試作] 自分の見た目だけドット絵スプライトに差し替え（?spritetest 時のみ）
+  const spriteDrawn = SPRITE_TEST && isMe && drawSpriteAvatar(p);
 
-  let drewImage = false;
-  if (p.iconType === "upload" && p.iconUrl) {
-    const img = getAvatarImage(p.iconUrl);
-    if (img && img.complete && (img.naturalWidth || img.width)) {
-      drawImageCover(img, p.x, p.y, r * 2);
-      drewImage = true;
-    }
-  }
-  if (!drewImage) {
-    const preset = p.iconType === "preset" ? presetById(p.iconId) : null;
-    ctx.fillStyle = preset ? preset.bg : p.color || "#888";
-    ctx.fillRect(p.x - r, p.y - r, r * 2, r * 2);
-    if (preset) {
-      ctx.font = `${Math.round(r * 1.5)}px ${EMOJI_FONT}`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(preset.emoji, p.x, p.y + 1);
-      ctx.textBaseline = "alphabetic";
-    }
-  }
-  ctx.restore();
+  if (!spriteDrawn) {
+    // アイコン本体（円形にクリップして描画）
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.clip();
 
-  // 枠線
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = isMe ? "#fff" : "rgba(255,255,255,0.6)";
-  ctx.stroke();
+    let drewImage = false;
+    if (p.iconType === "upload" && p.iconUrl) {
+      const img = getAvatarImage(p.iconUrl);
+      if (img && img.complete && (img.naturalWidth || img.width)) {
+        drawImageCover(img, p.x, p.y, r * 2);
+        drewImage = true;
+      }
+    }
+    if (!drewImage) {
+      const preset = p.iconType === "preset" ? presetById(p.iconId) : null;
+      ctx.fillStyle = preset ? preset.bg : p.color || "#888";
+      ctx.fillRect(p.x - r, p.y - r, r * 2, r * 2);
+      if (preset) {
+        ctx.font = `${Math.round(r * 1.5)}px ${EMOJI_FONT}`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(preset.emoji, p.x, p.y + 1);
+        ctx.textBaseline = "alphabetic";
+      }
+    }
+    ctx.restore();
+
+    // 枠線
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = isMe ? "#fff" : "rgba(255,255,255,0.6)";
+    ctx.stroke();
+  }
 
   ctx.font = "bold 13px sans-serif";
   ctx.textAlign = "center";
@@ -3059,6 +3123,7 @@ canvas.addEventListener("pointercancel", () => {
 function loop(now) {
   const t = now || performance.now();
   step();
+  if (SPRITE_TEST) updateSpriteAnimation(t);
   updateGameArea(t);
   if (virtualQuestGate && currentArea === AREAS.OFFICE) virtualQuestGate.update(t);
   updateVirtualQuestComingSoon();
