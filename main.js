@@ -201,14 +201,42 @@ function resizeCanvas() {
 // 表示サイズの変化（回転/リサイズ/タイル増減）に追従
 new ResizeObserver(resizeCanvas).observe(canvas);
 
+function visibleElementRect(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const style = getComputedStyle(el);
+  if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
+    return null;
+  }
+  const rect = el.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return rect;
+}
+
+function cameraOverlayInsetsPx() {
+  const margin = 14;
+  const videosRect = visibleElementRect("videos");
+  const controlsRect = visibleElementRect("controls");
+  return {
+    top: videosRect ? Math.max(0, videosRect.bottom + margin) : 0,
+    bottom: controlsRect ? Math.max(0, window.innerHeight - controlsRect.top + margin) : 0,
+  };
+}
+
 function updateCamera() {
-  // 横方向は従来どおりなめらかに追従し、縦方向はHUDと重ならないよう常に中央へ置く。
   camera.x += (me.x - camera.x) * 0.15;
-  camera.y = me.y;
 
   const s = camera.zoom * dpr;
   const halfW = canvas.width / 2 / s;
+  const halfH = canvas.height / 2 / s;
   camera.x = halfW * 2 >= W ? W / 2 : Math.max(halfW, Math.min(W - halfW, camera.x));
+
+  const insets = cameraOverlayInsetsPx();
+  const topOverscroll = Math.max(0, insets.top / camera.zoom - R);
+  const bottomOverscroll = Math.max(0, insets.bottom / camera.zoom - R);
+  const minY = halfH - topOverscroll;
+  const maxY = H - halfH + bottomOverscroll;
+  camera.y = Math.max(minY, Math.min(maxY, me.y));
 }
 
 // ---- 手動ズーム（PC=ホイール / スマホ=ピンチ）----
