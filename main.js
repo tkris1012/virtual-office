@@ -69,10 +69,12 @@ const H = 540; // WORLD_H
 const AREAS = Object.freeze({
   OFFICE: "office",
   OUTER_EDGE: "outer-edge",
+  OFFICE_EXTENSION: "office-extension",
 });
 const AREA_LABELS = Object.freeze({
   [AREAS.OFFICE]: "社内",
   [AREAS.OUTER_EDGE]: "外縁エリア",
+  [AREAS.OFFICE_EXTENSION]: "拡張部屋",
 });
 const OUTER_EDGE_ENTRY = { x: W * 0.5, y: H * 0.18 };
 const OUTER_EDGE_RETURN_GATE = Object.freeze({
@@ -142,6 +144,41 @@ const OUTER_EDGE_COMING_SOON_SPOTS = Object.freeze([
 ]);
 let currentArea = AREAS.OFFICE;
 let officeReturnPosition = { x: W * 0.475, y: H * 0.9 };
+let extensionReturnPosition = { x: W * 0.545, y: H * 0.24 };
+const OFFICE_EXTENSION_SOURCE_ASPECT = 2173 / 724;
+const OFFICE_EXTENSION_ENTRY_N = Object.freeze({ x: 0.5, y: 0.78 });
+const OFFICE_EXTENSION_DOOR = Object.freeze({
+  x: W * 0.505,
+  y: H * 0.0,
+  w: W * 0.08,
+  h: H * 0.13,
+});
+const OFFICE_EXTENSION_RETURN_DOOR_N = Object.freeze({
+  x: 0.46,
+  y: 0.68,
+  w: 0.09,
+  h: 0.23,
+});
+const OFFICE_EXTENSION_LOCKED_DOOR_N = Object.freeze({
+  x: 0.56,
+  y: 0.1,
+  w: 0.08,
+  h: 0.17,
+});
+const OFFICE_EXTENSION_MESSAGE_SPOTS = Object.freeze([
+  {
+    id: "my-room",
+    title: "マイルーム",
+    message: "まだ入れません。",
+    rect: { x: 0.02, y: 0.06, w: 0.24, h: 0.56 },
+  },
+  {
+    id: "alchemy-device",
+    title: "錬成装置",
+    message: "まだ使えません。",
+    rect: { x: 0.66, y: 0.08, w: 0.3, h: 0.5 },
+  },
+]);
 
 // ---- カメラ（各端末ローカル・通信しない）。アバターを追従しズームしてスクロール表示 ----
 const MOBILE = matchMedia("(pointer: coarse)").matches || window.innerWidth < 700;
@@ -164,16 +201,42 @@ function resizeCanvas() {
 // 表示サイズの変化（回転/リサイズ/タイル増減）に追従
 new ResizeObserver(resizeCanvas).observe(canvas);
 
+function visibleElementRect(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const style = getComputedStyle(el);
+  if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
+    return null;
+  }
+  const rect = el.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return rect;
+}
+
+function cameraOverlayInsetsPx() {
+  const margin = 14;
+  const videosRect = visibleElementRect("videos");
+  const controlsRect = visibleElementRect("controls");
+  return {
+    top: videosRect ? Math.max(0, videosRect.bottom + margin) : 0,
+    bottom: controlsRect ? Math.max(0, window.innerHeight - controlsRect.top + margin) : 0,
+  };
+}
+
 function updateCamera() {
-  // アバターへスムーズ追従
   camera.x += (me.x - camera.x) * 0.15;
-  camera.y += (me.y - camera.y) * 0.15;
-  // マップ外の黒余白を出さないようクランプ（ビューがワールドより大きければ中央寄せ）
+
   const s = camera.zoom * dpr;
   const halfW = canvas.width / 2 / s;
   const halfH = canvas.height / 2 / s;
   camera.x = halfW * 2 >= W ? W / 2 : Math.max(halfW, Math.min(W - halfW, camera.x));
-  camera.y = halfH * 2 >= H ? H / 2 : Math.max(halfH, Math.min(H - halfH, camera.y));
+
+  const insets = cameraOverlayInsetsPx();
+  const topOverscroll = Math.max(0, insets.top / camera.zoom - R);
+  const bottomOverscroll = Math.max(0, insets.bottom / camera.zoom - R);
+  const minY = halfH - topOverscroll;
+  const maxY = H - halfH + bottomOverscroll;
+  camera.y = Math.max(minY, Math.min(maxY, me.y));
 }
 
 // ---- 手動ズーム（PC=ホイール / スマホ=ピンチ）----
@@ -225,7 +288,12 @@ const DEBUG = new URLSearchParams(location.search).has("debug"); // ?debug で�
 const officeImg = new Image();
 let officeImgReady = false;
 officeImg.onload = () => (officeImgReady = true);
-officeImg.src = "office3.png";
+officeImg.src = "office3-door.png";
+
+const officeExtensionImg = new Image();
+let officeExtensionImgReady = false;
+officeExtensionImg.onload = () => (officeExtensionImgReady = true);
+officeExtensionImg.src = "office-extension-design.png";
 
 const outerEdgeImg = new Image();
 let outerEdgeImgReady = false;
@@ -244,9 +312,44 @@ const WALLS = WALL_RECTS_N.map((r) => ({
   h: r.h * H,
 }));
 
+function officeExtensionDrawRect() {
+  const aspect =
+    officeExtensionImgReady && officeExtensionImg.naturalWidth && officeExtensionImg.naturalHeight
+      ? officeExtensionImg.naturalWidth / officeExtensionImg.naturalHeight
+      : OFFICE_EXTENSION_SOURCE_ASPECT;
+  const worldAspect = W / H;
+  if (aspect >= worldAspect) {
+    const h = W / aspect;
+    return { x: 0, y: (H - h) / 2, w: W, h };
+  }
+  const w = H * aspect;
+  return { x: (W - w) / 2, y: 0, w, h: H };
+}
+
+function officeExtensionPointFromNormalized(point) {
+  const rect = officeExtensionDrawRect();
+  return { x: rect.x + point.x * rect.w, y: rect.y + point.y * rect.h };
+}
+
+function officeExtensionRectFromNormalized(rect) {
+  const drawRect = officeExtensionDrawRect();
+  return {
+    x: drawRect.x + rect.x * drawRect.w,
+    y: drawRect.y + rect.y * drawRect.h,
+    w: rect.w * drawRect.w,
+    h: rect.h * drawRect.h,
+  };
+}
+
+function isInOfficeExtensionImageBounds(x, y) {
+  const rect = officeExtensionDrawRect();
+  return x >= rect.x + R && x <= rect.x + rect.w - R && y >= rect.y + R && y <= rect.y + rect.h - R;
+}
+
 // その座標にアバター中心を置けるか（壁・画面外なら false）
 function canBeAt(x, y) {
   if (x < R || x > W - R || y < R || y > H - R) return false;
+  if (currentArea === AREAS.OFFICE_EXTENSION && !isInOfficeExtensionImageBounds(x, y)) return false;
   for (const wll of WALLS) {
     if (
       x > wll.x - R &&
@@ -287,9 +390,13 @@ function isInGameArea(p) {
   return p.x >= x && p.x <= x + width && p.y >= y && p.y <= y + height;
 }
 
+function normalizeArea(value) {
+  return Object.values(AREAS).includes(value) ? value : AREAS.OFFICE;
+}
+
 function areaOfPlayer(player) {
   if (player === me) return currentArea;
-  return player && player.area === AREAS.OUTER_EDGE ? AREAS.OUTER_EDGE : AREAS.OFFICE;
+  return normalizeArea(player && player.area);
 }
 
 function isPlayerInCurrentArea(player) {
@@ -456,7 +563,7 @@ function normalizePlayer(id, value) {
   const useUpload = value.iconType === "upload" && !!iconUrl;
   const requestedIconId = typeof value.iconId === "string" ? value.iconId : "";
   const iconId = presetById(requestedIconId) ? requestedIconId : defaultPresetIdFor(id);
-  const area = value.area === AREAS.OUTER_EDGE ? AREAS.OUTER_EDGE : AREAS.OFFICE;
+  const area = normalizeArea(value.area);
   return {
     ...value,
     x: Math.max(0, Math.min(W, value.x)),
@@ -467,10 +574,7 @@ function normalizePlayer(id, value) {
     iconId,
     iconUrl: useUpload ? iconUrl : "",
     area,
-    questAreaName:
-      area === AREAS.OUTER_EDGE
-        ? safeDisplayName(value.questAreaName, AREA_LABELS[AREAS.OUTER_EDGE])
-        : "",
+    questAreaName: area !== AREAS.OFFICE ? safeDisplayName(value.questAreaName, AREA_LABELS[area]) : "",
     message:
       typeof value.message === "string"
         ? Array.from(value.message.replace(/[\r\n\u2028\u2029]+/g, " ")).slice(0, 15).join("")
@@ -502,7 +606,7 @@ function isAppActive() {
 
 function currentPresencePayload() {
   const active = isAppActive();
-  const questAreaName = currentArea === AREAS.OUTER_EDGE ? AREA_LABELS[AREAS.OUTER_EDGE] : null;
+  const questAreaName = currentArea !== AREAS.OFFICE ? AREA_LABELS[currentArea] : null;
   return {
     x: Math.round(me.x),
     y: Math.round(me.y),
@@ -1136,7 +1240,7 @@ function ownPresenceSnapshot() {
   return {
     ...me,
     area: currentArea,
-    questAreaName: currentArea === AREAS.OUTER_EDGE ? AREA_LABELS[AREAS.OUTER_EDGE] : "",
+    questAreaName: currentArea !== AREAS.OFFICE ? AREA_LABELS[currentArea] : "",
   };
 }
 
@@ -1205,7 +1309,8 @@ function renderQuestAreaParticipants() {
 function updateOnlineStatus() {
   const officeCount = countPlayersInArea(AREAS.OFFICE);
   const questCount = countPlayersInArea(AREAS.OUTER_EDGE);
-  document.getElementById("status").textContent = `社内: ${officeCount}人 / バーチャルクエスト: ${questCount}人`;
+  const extensionCount = countPlayersInArea(AREAS.OFFICE_EXTENSION);
+  document.getElementById("status").textContent = `社内: ${officeCount}人 / 拡張部屋: ${extensionCount}人 / バーチャルクエスト: ${questCount}人`;
   if (virtualQuestGate) virtualQuestGate.setDestinationParticipants(getVirtualQuestDestinationParticipants());
   renderQuestAreaParticipants();
 }
@@ -2102,6 +2207,16 @@ function drawAvatar(p, isMe, connected) {
 }
 
 function drawFloor() {
+  if (currentArea === AREAS.OFFICE_EXTENSION) {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, W, H);
+    if (officeExtensionImgReady) {
+      const rect = officeExtensionDrawRect();
+      ctx.drawImage(officeExtensionImg, rect.x, rect.y, rect.w, rect.h);
+    }
+    return;
+  }
+
   if (currentArea === AREAS.OUTER_EDGE) {
     if (outerEdgeImgReady) {
       ctx.drawImage(outerEdgeImg, 0, 0, W, H);
@@ -2615,6 +2730,7 @@ function enterOuterEdgeArea() {
   updateOnlineStatus();
   updateVirtualQuestComingSoon();
   updateVirtualQuestReturnPrompt();
+  updateOfficeExtensionPrompts();
   showHud();
 }
 
@@ -2633,6 +2749,7 @@ function returnToOfficeArea() {
   updateOnlineStatus();
   updateVirtualQuestComingSoon();
   updateVirtualQuestReturnPrompt();
+  updateOfficeExtensionPrompts();
   showHud();
 }
 
@@ -2667,6 +2784,167 @@ function updateVirtualQuestReturnPrompt() {
   const prompt = document.getElementById("virtual-quest-return-prompt");
   if (!prompt) return;
   prompt.hidden = !isPlayerInOuterEdgeReturnGate() || isBlockingOverlayOpen();
+}
+
+function isInsideRect(rect) {
+  return (
+    me.x >= rect.x &&
+    me.x <= rect.x + rect.w &&
+    me.y >= rect.y &&
+    me.y <= rect.y + rect.h
+  );
+}
+
+function isPlayerAtOfficeExtensionDoor() {
+  return currentArea === AREAS.OFFICE && isInsideRect(OFFICE_EXTENSION_DOOR);
+}
+
+function isPlayerAtOfficeExtensionReturnDoor() {
+  return (
+    currentArea === AREAS.OFFICE_EXTENSION &&
+    isInsideRect(officeExtensionRectFromNormalized(OFFICE_EXTENSION_RETURN_DOOR_N))
+  );
+}
+
+function isPlayerAtOfficeExtensionLockedDoor() {
+  return (
+    currentArea === AREAS.OFFICE_EXTENSION &&
+    isInsideRect(officeExtensionRectFromNormalized(OFFICE_EXTENSION_LOCKED_DOOR_N))
+  );
+}
+
+function currentOfficeExtensionMessageSpot() {
+  if (currentArea !== AREAS.OFFICE_EXTENSION) return null;
+  if (isPlayerAtOfficeExtensionLockedDoor()) {
+    return { title: "LOCKED", message: "鍵がかかっている。" };
+  }
+  return (
+    OFFICE_EXTENSION_MESSAGE_SPOTS.find((spot) =>
+      isInsideRect(officeExtensionRectFromNormalized(spot.rect))
+    ) || null
+  );
+}
+
+function enterOfficeExtensionArea() {
+  if (currentArea === AREAS.OFFICE_EXTENSION) return;
+  extensionReturnPosition = { x: me.x, y: me.y };
+  currentArea = AREAS.OFFICE_EXTENSION;
+  clearMovementInput();
+  const entry = officeExtensionPointFromNormalized(OFFICE_EXTENSION_ENTRY_N);
+  me.x = entry.x;
+  me.y = entry.y;
+  camera.x = me.x;
+  camera.y = me.y;
+  dirty = true;
+  restorePresence();
+  updateOnlineStatus();
+  updateVirtualQuestComingSoon();
+  updateVirtualQuestReturnPrompt();
+  updateOfficeExtensionPrompts();
+  showHud();
+}
+
+function returnFromOfficeExtensionArea() {
+  if (currentArea !== AREAS.OFFICE_EXTENSION) return;
+  currentArea = AREAS.OFFICE;
+  clearMovementInput();
+  me.x = extensionReturnPosition.x;
+  me.y = extensionReturnPosition.y;
+  camera.x = me.x;
+  camera.y = me.y;
+  dirty = true;
+  restorePresence();
+  updateOnlineStatus();
+  updateVirtualQuestComingSoon();
+  updateVirtualQuestReturnPrompt();
+  updateOfficeExtensionPrompts();
+  showHud();
+}
+
+function updateOfficeExtensionPrompts() {
+  const enterPrompt = document.getElementById("office-extension-enter-prompt");
+  const returnPrompt = document.getElementById("office-extension-return-prompt");
+  const messagePanel = document.getElementById("office-extension-locked-message");
+  const blocked = isBlockingOverlayOpen();
+  const messageSpot = blocked ? null : currentOfficeExtensionMessageSpot();
+
+  if (enterPrompt) enterPrompt.hidden = !isPlayerAtOfficeExtensionDoor() || blocked;
+  if (returnPrompt) returnPrompt.hidden = !isPlayerAtOfficeExtensionReturnDoor() || blocked;
+  if (messagePanel) {
+    messagePanel.hidden = !messageSpot;
+    if (messageSpot) {
+      const title = messagePanel.querySelector(".virtual-quest-coming-soon-title");
+      const message = messagePanel.querySelector(".virtual-quest-coming-soon-message");
+      if (title) title.textContent = messageSpot.title;
+      if (message) message.textContent = messageSpot.message;
+    }
+  }
+}
+
+function setupOfficeExtensionStageControls() {
+  const enterPrompt = document.createElement("div");
+  enterPrompt.id = "office-extension-enter-prompt";
+  enterPrompt.hidden = true;
+  enterPrompt.innerHTML = `
+    <div class="virtual-quest-prompt-copy">
+      <strong>拡張部屋</strong>
+      <span>ドアから移動できます</span>
+    </div>
+    <span class="virtual-quest-prompt-key">F</span>
+    <button type="button">入る</button>
+  `;
+  enterPrompt.querySelector("button").addEventListener("click", enterOfficeExtensionArea);
+  document.body.appendChild(enterPrompt);
+
+  const returnPrompt = document.createElement("div");
+  returnPrompt.id = "office-extension-return-prompt";
+  returnPrompt.hidden = true;
+  returnPrompt.innerHTML = `
+    <div class="virtual-quest-prompt-copy">
+      <strong>オフィス</strong>
+      <span>元のオフィスへ戻れます</span>
+    </div>
+    <span class="virtual-quest-prompt-key">F</span>
+    <button type="button">戻る</button>
+  `;
+  returnPrompt.querySelector("button").addEventListener("click", returnFromOfficeExtensionArea);
+  document.body.appendChild(returnPrompt);
+
+  const lockedMessage = document.createElement("div");
+  lockedMessage.id = "office-extension-locked-message";
+  lockedMessage.hidden = true;
+  lockedMessage.innerHTML = `
+    <div class="virtual-quest-coming-soon-title"></div>
+    <div class="virtual-quest-coming-soon-message"></div>
+  `;
+  document.body.appendChild(lockedMessage);
+
+  addEventListener("keydown", (event) => {
+    if (
+      event.key.toLowerCase() !== "f" ||
+      event.repeat ||
+      event.isComposing ||
+      isEditableTarget(event.target) ||
+      isBlockingOverlayOpen()
+    ) {
+      return;
+    }
+    if (isPlayerAtOfficeExtensionDoor()) {
+      event.preventDefault();
+      enterOfficeExtensionArea();
+      return;
+    }
+    if (isPlayerAtOfficeExtensionReturnDoor()) {
+      event.preventDefault();
+      returnFromOfficeExtensionArea();
+      return;
+    }
+    if (isPlayerAtOfficeExtensionLockedDoor()) {
+      event.preventDefault();
+      toast("鍵がかかっている。");
+      updateOfficeExtensionPrompts();
+    }
+  });
 }
 
 // ---- HUD 自動表示/非表示（無操作で隠す＋マップのタップ/クリックでトグル）----
@@ -2785,6 +3063,7 @@ function loop(now) {
   if (virtualQuestGate && currentArea === AREAS.OFFICE) virtualQuestGate.update(t);
   updateVirtualQuestComingSoon();
   updateVirtualQuestReturnPrompt();
+  updateOfficeExtensionPrompts();
   flushPosition(t);
   updateProximityChimes();
   updateConnections();
@@ -3717,6 +3996,7 @@ setupControlTooltips();
 setupSlimeGame();
 setupVirtualQuestGate();
 setupVirtualQuestStageControls();
+setupOfficeExtensionStageControls();
 
 if (ICETEST) {
   document.getElementById("signin").hidden = true;
