@@ -2017,9 +2017,34 @@ let spriteImgReady = false;
 spriteImg.onload = () => (spriteImgReady = true);
 spriteImg.src = "assets/sprites/男性_ドット絵_スプライト.png";
 const SPRITE_COLS = 4;
-const SPRITE_ROWS = 4;
-// 3行目が本当に「右向き」か未確認のため、右向きは2行目（左向き）を左右反転して代用する
-const SPRITE_ROW_BY_FACING = { down: 0, left: 1, right: 1, up: 3 };
+// 各コマの実座標（背景除去/位置解析で実測。セルを均等分割すると余白込みでズレるため実測値を使う）
+// 2行目=左向き, 3行目=右向き（ピクセル比較で2行目の左右反転とほぼ一致することを確認済み＝本物の右向きコマ）
+const SPRITE_FRAMES_BY_FACING = {
+  down: [
+    { x: 144, y: 37, w: 160, h: 274 },
+    { x: 409, y: 37, w: 156, h: 274 },
+    { x: 674, y: 37, w: 154, h: 274 },
+    { x: 934, y: 37, w: 162, h: 274 },
+  ],
+  left: [
+    { x: 149, y: 338, w: 139, h: 259 },
+    { x: 412, y: 338, w: 142, h: 259 },
+    { x: 674, y: 338, w: 140, h: 259 },
+    { x: 940, y: 338, w: 141, h: 259 },
+  ],
+  right: [
+    { x: 151, y: 633, w: 138, h: 260 },
+    { x: 415, y: 633, w: 138, h: 260 },
+    { x: 677, y: 633, w: 138, h: 260 },
+    { x: 942, y: 633, w: 138, h: 260 },
+  ],
+  up: [
+    { x: 144, y: 920, w: 151, h: 268 },
+    { x: 410, y: 920, w: 150, h: 268 },
+    { x: 674, y: 920, w: 148, h: 268 },
+    { x: 935, y: 920, w: 153, h: 268 },
+  ],
+};
 const SPRITE_FRAME_MS = 130;
 let lastSpriteFrameAt = 0;
 
@@ -2046,22 +2071,19 @@ function updateSpriteAnimation(now) {
 // 自分のアバターだけスプライト描画に差し替える（他人・DBスキーマには一切影響しない試作）
 function drawSpriteAvatar(p) {
   if (!spriteImgReady) return false;
-  const iw = spriteImg.naturalWidth;
-  const ih = spriteImg.naturalHeight;
-  if (!iw || !ih) return false;
-  const frameW = iw / SPRITE_COLS;
-  const frameH = ih / SPRITE_ROWS;
-  const row = SPRITE_ROW_BY_FACING[p.facing || "down"];
-  const col = p.spriteFrame || 0;
+  if (!spriteImg.naturalWidth || !spriteImg.naturalHeight) return false;
+  const facing = p.facing || "down";
+  const frames = SPRITE_FRAMES_BY_FACING[facing] || SPRITE_FRAMES_BY_FACING.down;
+  const frame = frames[(p.spriteFrame || 0) % frames.length];
   const destH = AVATAR_R * 3.6;
-  const destW = destH * (frameW / frameH);
-  const flip = p.facing === "right";
+  const destW = destH * (frame.w / frame.h);
 
   ctx.save();
   ctx.imageSmoothingEnabled = false; // ドット絵をぼかさない
-  ctx.translate(p.x, p.y + AVATAR_R * 0.4); // だいたい足元がpの当たり判定に来るよう調整
-  if (flip) ctx.scale(-1, 1);
-  ctx.drawImage(spriteImg, col * frameW, row * frameH, frameW, frameH, -destW / 2, -destH, destW, destH);
+  // 各コマは実測の当たり判定＝足元がコマの下端に来るよう切り出し済みなので、
+  // pの位置に下端中央を合わせるだけで向き/コマが変わってもズレない
+  ctx.translate(p.x, p.y + AVATAR_R * 0.4);
+  ctx.drawImage(spriteImg, frame.x, frame.y, frame.w, frame.h, -destW / 2, -destH, destW, destH);
   ctx.restore();
   return true;
 }
