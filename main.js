@@ -2135,7 +2135,8 @@ const AVATAR_R = 16;
 // Universal LPC Spritesheet Generator の書き出し（64x64セル・9フレーム・4方向）を使用。
 // 各キャラクターはレイヤーPNG（体・服・髪など）を番号の昇順に重ねて合成する。
 // キャラクター一覧・クレジットは sprite-characters.js / assets/sprites/*/credits を参照。
-const SPRITE_TEST = new URLSearchParams(location.search).has("spritetest");
+// 試作機能から本採用に切り替え、常時有効にした（旧: ?spritetest フラグ）。
+const SPRITE_TEST = true;
 const SPRITE_CELL = 64;
 const SPRITE_COLS = 9; // 実際に絵が入っているのは9コマ分（残り4列は空白パディング）
 // LPC標準の行順: 0=上向き, 1=左向き, 2=下向き, 3=右向き
