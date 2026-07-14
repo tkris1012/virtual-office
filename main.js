@@ -2313,8 +2313,7 @@ function drawAvatar(p, isMe, connected) {
 
   ctx.font = "bold 13px sans-serif";
   ctx.textAlign = "center";
-  const label =
-    safeDisplayName(p.name, isMe ? defaultName : "ゲスト") + (isMe ? "（あなた）" : "");
+  const label = safeDisplayName(p.name, isMe ? defaultName : "ゲスト");
   // アイコン(円/半径r)とスプライトで頭頂の高さが違う。スプライト側はセル内の実際の
   // 髪の生え際（実測）を基準にすることで、絵の余白ぶん名前が浮くのを防ぐ
   const avatarTopOffset = spriteDrawn ? SPRITE_HEAD_TOP_OFFSET - SPRITE_FEET_OFFSET : r;
@@ -2322,7 +2321,8 @@ function drawAvatar(p, isMe, connected) {
   ctx.lineWidth = 3;
   ctx.strokeStyle = "rgba(0,0,0,0.7)"; // 明るい背景でも読めるよう縁取り
   ctx.strokeText(label, p.x, labelY);
-  ctx.fillStyle = "#fff";
+  // 自分の名前だけアクセントカラーにして、テキストを増やさずに「自分」とわかるようにする
+  ctx.fillStyle = isMe ? "#63e6d4" : "#fff";
   ctx.fillText(label, p.x, labelY);
 }
 
