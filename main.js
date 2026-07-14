@@ -2211,25 +2211,58 @@ function drawStampAnimations(now) {
   }
 }
 
+// 在席(active)/通話中(connected)を、足元の楕円グロー（影のような見た目）で示す。
+// 円をアイコン中心に重ねる旧デザインは、縦長のスプライトだと体の途中を貫通してしまうため廃止。
+function drawPresenceRing(cx, cy, halfW, halfH, strokeColor, glowColor, lineWidth) {
+  ctx.save();
+  if (glowColor) {
+    ctx.filter = "blur(5px)";
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, halfW * 1.3, halfH * 1.6, 0, 0, Math.PI * 2);
+    ctx.fillStyle = glowColor;
+    ctx.fill();
+    ctx.filter = "none";
+  }
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, halfW, halfH, 0, 0, Math.PI * 2);
+  ctx.lineWidth = lineWidth;
+  ctx.strokeStyle = strokeColor;
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawAvatar(p, isMe, connected) {
   const r = AVATAR_R;
+  // [試作] 自分の見た目だけドット絵スプライトに差し替え（?spritetest 時のみ）。
+  // 足元(=グローの中心)の高さがアイコンとスプライトで違うため、描画前に判定しておく。
+  const willDrawSprite =
+    SPRITE_TEST && isMe && spriteImgReady && !!spriteImg.naturalWidth && !!spriteImg.naturalHeight;
+  const feetY = willDrawSprite ? p.y + SPRITE_FEET_OFFSET : p.y;
+
   if (p.active) {
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, r + 6, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(46, 204, 113, 0.9)";
-    ctx.lineWidth = 4;
-    ctx.stroke();
+    drawPresenceRing(
+      p.x,
+      feetY,
+      r * 1.3,
+      r * 0.32,
+      "rgba(46, 204, 113, 0.9)",
+      "rgba(46, 204, 113, 0.35)",
+      3
+    );
   }
   if (connected) {
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, r + 11, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(52, 152, 219, 0.9)";
-    ctx.lineWidth = 2;
-    ctx.stroke();
+    drawPresenceRing(
+      p.x,
+      feetY,
+      r * 1.7,
+      r * 0.42,
+      "rgba(52, 152, 219, 0.85)",
+      p.active ? null : "rgba(52, 152, 219, 0.25)", // activeの光と二重にぼかさない
+      2
+    );
   }
 
-  // [試作] 自分の見た目だけドット絵スプライトに差し替え（?spritetest 時のみ）
-  const spriteDrawn = SPRITE_TEST && isMe && drawSpriteAvatar(p);
+  const spriteDrawn = willDrawSprite && drawSpriteAvatar(p);
 
   if (!spriteDrawn) {
     // アイコン本体（円形にクリップして描画）
