@@ -40,6 +40,7 @@ python -m http.server 8000
 | `avatars.js` | プリセットアイコン定義 |
 | `style.css` | スタイル |
 | `database.rules.json` | Realtime Database セキュリティルール |
+| `assets/sprites/SPEC.md` | キャラクター用スプライトシートの規格（**追加・生成する前に必読**） |
 
 ## CI
 

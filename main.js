@@ -444,6 +444,8 @@ let virtualQuestGate = null;
 
 // ---- 通知音 / アクティブ状態 ----
 let notificationAudioContext = null;
+let outputVolume = 1;
+let lastAudibleOutputVolume = 1;
 let communicationReady = false;
 let lastPublishedActive = null;
 let presenceInitialized = false;
@@ -467,6 +469,41 @@ const STAMP_TYPES = Object.freeze({
   laugh: "😂",
   sad: "😢",
 });
+
+function outputVolumeStorageKey(uid) {
+  return `vo_output_volume_${uid || "guest"}`;
+}
+
+function lastOutputVolumeStorageKey(uid) {
+  return `vo_output_volume_last_${uid || "guest"}`;
+}
+
+function loadStoredVolume(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    const value = Number(raw);
+    return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function loadOutputVolume(uid) {
+  return loadStoredVolume(outputVolumeStorageKey(uid), 1);
+}
+
+function loadLastAudibleOutputVolume(uid) {
+  const value = loadStoredVolume(lastOutputVolumeStorageKey(uid), 1);
+  return value > 0 ? value : 1;
+}
+
+function saveOutputVolume(uid) {
+  try {
+    localStorage.setItem(outputVolumeStorageKey(uid), String(outputVolume));
+    localStorage.setItem(lastOutputVolumeStorageKey(uid), String(lastAudibleOutputVolume));
+  } catch (_) {}
+}
 
 // ---- チャット（ルーム全体・毎朝5時にGitHub Actionsで全削除）----
 const CHAT_HISTORY_LIMIT = 200; // 表示・購読する最大件数（無料枠を圧迫しないよう間引く）
@@ -531,7 +568,10 @@ function scheduleChime(audio, kind) {
     oscillator.type = tone.type || "sine";
     oscillator.frequency.setValueAtTime(tone.frequency, at);
     gain.gain.setValueAtTime(0.0001, at);
-    gain.gain.exponentialRampToValueAtTime(tone.gain || 0.08, at + 0.01);
+    gain.gain.exponentialRampToValueAtTime(
+      Math.max(0.0001, (tone.gain || 0.08) * outputVolume),
+      at + 0.01
+    );
     gain.gain.exponentialRampToValueAtTime(0.0001, at + tone.duration);
     oscillator.connect(gain);
     gain.connect(audio.destination);
@@ -541,6 +581,7 @@ function scheduleChime(audio, kind) {
 }
 
 function playNotificationChime(kind) {
+  if (outputVolume <= 0) return;
   const audio = ensureNotificationAudio();
   if (!audio) return;
   if (audio.state === "suspended") {
@@ -744,6 +785,7 @@ function removeVideo(peerId) {
 function setupControls(media) {
   const camBtn = document.getElementById("btn-cam");
   const micBtn = document.getElementById("btn-mic");
+  const volumeBtn = document.getElementById("btn-volume");
   const screenBtn = document.getElementById("btn-screen");
   const bgBtn = document.getElementById("btn-bg");
   const annBtn = document.getElementById("btn-announce");
@@ -753,6 +795,9 @@ function setupControls(media) {
   const chatBtn = document.getElementById("btn-chat");
 
   const bgPopover = document.getElementById("bg-popover");
+  const outputVolumePopover = document.getElementById("output-volume-popover");
+  const outputVolumeRange = document.getElementById("output-volume-range");
+  const outputVolumeValue = document.getElementById("output-volume-value");
   const summonPanel = document.getElementById("summon-panel");
   const summonList = document.getElementById("summon-list");
   const messagePopover = document.getElementById("message-popover");
@@ -780,6 +825,8 @@ function setupControls(media) {
   };
   const closePopovers = () => {
     bgPopover.hidden = true;
+    outputVolumePopover.hidden = true;
+    volumeBtn.setAttribute("aria-expanded", "false");
     summonPanel.hidden = true;
     messagePopover.hidden = true;
     stampPopover.hidden = true;
@@ -908,6 +955,40 @@ function setupControls(media) {
       on ? "マイク オン（ショートカット: B）" : "マイク オフ（ショートカット: B）"
     );
   }
+  function syncOutputVolumeUI() {
+    const percent = Math.round(outputVolume * 100);
+    outputVolumeRange.value = String(percent);
+    outputVolumeValue.textContent = `${percent}%`;
+    outputVolumeRange.setAttribute("aria-valuetext", `${percent}%`);
+    const icon =
+      percent === 0
+        ? "ti-volume-off"
+        : percent <= 50
+          ? "ti-volume-2"
+          : "ti-volume";
+    setIcon(volumeBtn, icon);
+    volumeBtn.classList.toggle("off", percent === 0);
+    volumeBtn.setAttribute("aria-label", `出力音量 ${percent}%（ショートカット: U）`);
+  }
+  function setOutputVolume(value, persist = false) {
+    const normalized = Math.max(0, Math.min(1, Number(value) || 0));
+    outputVolume = normalized;
+    if (normalized > 0) lastAudibleOutputVolume = normalized;
+    syncOutputVolumeUI();
+    updateSpatialAudio();
+    if (persist) saveOutputVolume(myId);
+    noteHudActivity();
+  }
+  function toggleOutputMute() {
+    if (outputVolume > 0) {
+      lastAudibleOutputVolume = outputVolume;
+      setOutputVolume(0, true);
+      toast("こちらで聞こえる音をミュートしました");
+    } else {
+      setOutputVolume(lastAudibleOutputVolume || 1, true);
+      toast(`出力音量を${Math.round(outputVolume * 100)}%に戻しました`);
+    }
+  }
   function syncScreenUI() {
     const on = media.screenOn;
     screenBtn.classList.toggle("active", on);
@@ -956,6 +1037,18 @@ function setupControls(media) {
 
   camBtn.addEventListener("click", toggleCamera);
   micBtn.addEventListener("click", toggleMic);
+  volumeBtn.addEventListener("click", () => {
+    const show = outputVolumePopover.hidden;
+    closePopovers();
+    outputVolumePopover.hidden = !show;
+    volumeBtn.setAttribute("aria-expanded", show ? "true" : "false");
+    if (show) outputVolumeRange.focus();
+    noteHudActivity();
+  });
+  outputVolumeRange.addEventListener("input", () => {
+    setOutputVolume(Number(outputVolumeRange.value) / 100);
+  });
+  outputVolumeRange.addEventListener("change", () => saveOutputVolume(myId));
 
   // --- 画面共有 ---
   media.onScreenEnd = syncScreenUI; // ブラウザ側「共有を停止」にも追従
@@ -1130,6 +1223,12 @@ function setupControls(media) {
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      if (!outputVolumePopover.hidden) {
+        closePopovers();
+        volumeBtn.focus();
+        event.preventDefault();
+        return;
+      }
       if (!messagePopover.hidden || !stampPopover.hidden) {
         const returnFocus = !messagePopover.hidden ? messageBtn : stampBtn;
         closePopovers();
@@ -1159,6 +1258,11 @@ function setupControls(media) {
       if (shortcutKey === "b") {
         event.preventDefault();
         toggleMic();
+        return;
+      }
+      if (shortcutKey === "u") {
+        event.preventDefault();
+        toggleOutputMute();
         return;
       }
       if (shortcutKey === "r") {
@@ -1230,8 +1334,12 @@ function setupControls(media) {
     }
   });
 
+  outputVolume = loadOutputVolume(myId);
+  lastAudibleOutputVolume =
+    outputVolume > 0 ? outputVolume : loadLastAudibleOutputVolume(myId);
   syncCamUI();
   syncMicUI();
+  syncOutputVolumeUI();
   syncScreenUI();
   syncBgUI();
   syncMessageUI();
@@ -1920,7 +2028,7 @@ function updateSpatialAudio() {
       const d = Math.hypot(o.x - me.x, o.y - me.y);
       vol = Math.max(0, Math.min(1, (HANGUP_RADIUS - d) / (HANGUP_RADIUS - FULL_VOLUME_RADIUS)));
     }
-    v.volume = vol;
+    v.volume = vol * outputVolume;
     tile.style.opacity = (0.45 + 0.55 * vol).toFixed(2); // 遠いほど薄く表示
   }
 }
@@ -3149,6 +3257,7 @@ let wasInCall = false;
 // ポップオーバー/コンソールを開いている間は自動非表示しない（操作中に消えないように）
 function isHudPaused() {
   const bg = document.getElementById("bg-popover");
+  const volume = document.getElementById("output-volume-popover");
   const sp = document.getElementById("summon-panel");
   const mp = document.getElementById("message-popover");
   const stamp = document.getElementById("stamp-popover");
@@ -3158,6 +3267,7 @@ function isHudPaused() {
   const cp = document.getElementById("chat-panel");
   return (
     (bg && !bg.hidden) ||
+    (volume && !volume.hidden) ||
     (sp && !sp.hidden) ||
     (mp && !mp.hidden) ||
     (stamp && !stamp.hidden) ||
@@ -3181,12 +3291,14 @@ function cancelTransientHudOperations() {
     virtualQuestGate.closeModal();
     shouldBlur = true;
   }
-  for (const id of ["bg-popover", "stamp-popover", "message-popover", "summon-panel"]) {
+  for (const id of ["bg-popover", "output-volume-popover", "stamp-popover", "message-popover", "summon-panel"]) {
     const panel = document.getElementById(id);
     if (!panel || panel.hidden) continue;
     if (activeElement && panel.contains(activeElement)) shouldBlur = true;
     panel.hidden = true;
   }
+  const volumeBtn = document.getElementById("btn-volume");
+  if (volumeBtn) volumeBtn.setAttribute("aria-expanded", "false");
   if (shouldBlur && activeElement instanceof HTMLElement) activeElement.blur();
 }
 function hideHud() {
