@@ -988,7 +988,7 @@ body.game-open #joystick {
 }
 .myavatar-stage {
   width: 100%;
-  height: 120px;
+  height: 200px;
   border-radius: 10px;
   background: radial-gradient(120% 140% at 50% 18%, #1c2636, #0d1620);
   display: flex;
@@ -996,8 +996,8 @@ body.game-open #joystick {
   justify-content: center;
 }
 .myavatar-stage canvas {
-  width: 96px;
-  height: 96px;
+  width: 168px;
+  height: 168px;
   image-rendering: pixelated;
 }
 .myavatar-edit-badge {
