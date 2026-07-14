@@ -302,21 +302,23 @@
     </div>
   </aside>
 
-  <!-- アバター編集画面（プロフィール設定の子画面・マイアバターをタップで表示） -->
-  <aside id="avatar-editor" hidden>
-    <div class="console-head">
-      <button id="avatar-editor-back" class="gear-btn" type="button" aria-label="戻る"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>
-      <span>アバターを着せ替える</span>
-      <button id="avatar-editor-close" class="gear-btn" type="button" aria-label="閉じる"><i class="ti ti-x" aria-hidden="true"></i></button>
-    </div>
-    <div class="console-body">
-      <div class="avatar-editor-stage">
-        <canvas id="avatar-editor-canvas" width="160" height="160"></canvas>
+  <!-- アバター編集画面（プロフィール設定の子画面・マイアバターをタップで表示。中央ポップアップ） -->
+  <div id="avatar-editor" hidden>
+    <div class="avatar-editor-card">
+      <div class="avatar-editor-head">
+        <button id="avatar-editor-back" class="gear-btn" type="button" aria-label="戻る"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>
+        <span>アバターを着せ替える</span>
+        <button id="avatar-editor-close" class="gear-btn" type="button" aria-label="閉じる"><i class="ti ti-x" aria-hidden="true"></i></button>
       </div>
-      <div class="console-section-title">プリセット</div>
-      <div id="avatar-editor-grid" class="character-grid"></div>
+      <div class="avatar-editor-body">
+        <div class="avatar-editor-stage">
+          <canvas id="avatar-editor-canvas" width="160" height="160"></canvas>
+        </div>
+        <div class="console-section-title">プリセット</div>
+        <div id="avatar-editor-grid" class="character-grid"></div>
+      </div>
     </div>
-  </aside>
+  </div>
 
   <!-- チャット（ルーム全体・毎朝5時に自動削除） -->
   <div id="chat-backdrop" hidden></div>

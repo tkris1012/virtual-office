@@ -4299,25 +4299,24 @@ function buildCharacterGrid() {
 }
 
 // マイアバターをタップ → プロフィール設定パネルの子画面としてアバター編集画面を開く
+// マイアバターをタップ → 中央ポップアップでアバター編集画面を開く（プロフィール設定は背後にそのまま残す）
 function openAvatarEditor() {
   buildCharacterGrid();
   renderAvatarEditorSelection();
-  document.getElementById("console").hidden = true;
   const panel = document.getElementById("avatar-editor");
   panel.hidden = false;
-  panel.classList.add("closing"); // いったん画面外
-  requestAnimationFrame(() => panel.classList.remove("closing")); // スライドイン
+  panel.classList.add("closing"); // いったん透明・縮小状態から
+  requestAnimationFrame(() => panel.classList.remove("closing")); // フェード＋拡大で表示
 }
 
-// アバター編集画面の「‹」で戻る → プロフィール設定へ（保存はまだしない）
+// アバター編集画面の「‹」/背景クリックで戻る → プロフィール設定へ（保存はまだしない）
 function closeAvatarEditorToConsole() {
   const panel = document.getElementById("avatar-editor");
   panel.classList.add("closing");
   setTimeout(() => {
     panel.hidden = true;
     panel.classList.remove("closing");
-  }, 220);
-  document.getElementById("console").hidden = false;
+  }, 200);
 }
 
 function openConsole() {
@@ -4368,6 +4367,7 @@ function setupConsole() {
   const note = document.getElementById("console-note");
   const logoutBtn = document.getElementById("console-logout");
   const myavatarLauncher = document.getElementById("myavatar-launcher");
+  const avatarEditorPanel = document.getElementById("avatar-editor");
   const avatarEditorBack = document.getElementById("avatar-editor-back");
   const avatarEditorClose = document.getElementById("avatar-editor-close");
 
@@ -4378,6 +4378,11 @@ function setupConsole() {
   if (myavatarLauncher) myavatarLauncher.addEventListener("click", openAvatarEditor);
   if (avatarEditorBack) avatarEditorBack.addEventListener("click", closeAvatarEditorToConsole);
   if (avatarEditorClose) avatarEditorClose.addEventListener("click", closeConsole);
+  // 中央ポップアップの外側（暗い背景部分）クリックでもプロフィール設定へ戻る
+  if (avatarEditorPanel)
+    avatarEditorPanel.addEventListener("click", (e) => {
+      if (e.target === avatarEditorPanel) closeAvatarEditorToConsole();
+    });
 
   if (uploadBtn) uploadBtn.addEventListener("click", () => fileInput.click());
   if (fileInput)
