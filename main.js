@@ -1739,6 +1739,7 @@ async function initPresence() {
         continue;
       }
       validOtherIds.add(id);
+      carrySpriteAnimationState(player, others[id]);
       others[id] = player;
       const eventId = player.messageEventId || "";
       if (
@@ -2208,6 +2209,20 @@ function loadSpriteCharacter(characterId) {
 function getSpriteCharacterCanvas(characterId) {
   const state = loadSpriteCharacter(characterId || DEFAULT_SPRITE_CHARACTER_ID);
   return state.ready ? state.canvas : null;
+}
+
+// normalizePlayer() は毎回新しいオブジェクトを返すため、others[id] を置き換える前に
+// ローカルで追跡している向き/歩行アニメの状態を引き継いでおく（引き継がないと、
+// 動いている間ほぼ毎フレーム「初回判定」に戻ってしまい、向きが更新されなくなる）
+function carrySpriteAnimationState(newPlayer, oldPlayer) {
+  if (!oldPlayer) return;
+  newPlayer.facing = oldPlayer.facing;
+  newPlayer.spriteMoving = oldPlayer.spriteMoving;
+  newPlayer.spriteFrame = oldPlayer.spriteFrame;
+  newPlayer._spriteLastX = oldPlayer._spriteLastX;
+  newPlayer._spriteLastY = oldPlayer._spriteLastY;
+  newPlayer._spriteLastMoveAt = oldPlayer._spriteLastMoveAt;
+  newPlayer._spriteFrameAt = oldPlayer._spriteFrameAt;
 }
 
 function updateSpriteFacing(p, dx, dy) {
