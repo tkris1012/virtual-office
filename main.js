@@ -2427,21 +2427,6 @@ function render() {
     if (virtualQuestGate) virtualQuestGate.draw(ctx, now);
   }
 
-  // 自分の通話範囲（部屋にいる時・アナウンス中は出さない）
-  // [試作] スプライト表示中はキャラクターの見た目を優先し、この円は出さない
-  const spriteActiveForMe = SPRITE_TEST && spriteImgReady && !!spriteImg.naturalWidth && !!spriteImg.naturalHeight;
-  if (currentArea === AREAS.OFFICE && !zoneOf(me) && !announcing && !spriteActiveForMe) {
-    ctx.beginPath();
-    ctx.arc(me.x, me.y, CALL_RADIUS, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(52, 152, 219, 0.10)";
-    ctx.fill();
-    ctx.setLineDash([6, 6]);
-    ctx.strokeStyle = "rgba(52, 152, 219, 0.55)";
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
-
   if (DEBUG) drawDebug();
 
   if (currentArea === AREAS.OFFICE) {
