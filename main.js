@@ -1362,6 +1362,19 @@ function setupControls(media) {
         chatBtn.focus();
         event.preventDefault();
       }
+      const avatarEditorPanel = document.getElementById("avatar-editor");
+      if (avatarEditorPanel && !avatarEditorPanel.hidden) {
+        closeAvatarEditorToConsole();
+        event.preventDefault();
+        return;
+      }
+      const consolePanel = document.getElementById("console");
+      if (consolePanel && !consolePanel.hidden) {
+        closeConsole();
+        const settingsBtn = document.getElementById("btn-settings");
+        if (settingsBtn) settingsBtn.focus();
+        event.preventDefault();
+      }
       return;
     }
     const shortcutKey = event.key.toLowerCase();
