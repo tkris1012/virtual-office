@@ -2025,6 +2025,14 @@ const SPRITE_ROW_BY_FACING = { up: 0, left: 1, down: 2, right: 3 };
 const SPRITE_FRAME_MS = 100;
 const SPRITE_FEET_OFFSET = AVATAR_R * 0.5; // 足元(=当たり判定のp)をpからどれだけ下にずらすか
 const SPRITE_DRAW_HEIGHT = AVATAR_R * 3.2; // 描画するスプライトの高さ
+// セル(64px)内で実際に絵が入っている範囲を実測（4方向とも共通）。
+// セル自体には髪の上・靴の下に余白があるため、名前ラベル/足元グローの位置合わせに使う。
+const SPRITE_CONTENT_TOP_ROW = 12;
+const SPRITE_CONTENT_BOTTOM_ROW = 61;
+const SPRITE_SCALE = SPRITE_DRAW_HEIGHT / SPRITE_CELL;
+// feetY(=p.y+SPRITE_FEET_OFFSET, セル下端)から見た「本当の頭頂/足先」のオフセット
+const SPRITE_HEAD_TOP_OFFSET = SPRITE_DRAW_HEIGHT - SPRITE_CONTENT_TOP_ROW * SPRITE_SCALE;
+const SPRITE_FEET_VISUAL_INSET = SPRITE_DRAW_HEIGHT - (SPRITE_CONTENT_BOTTOM_ROW + 1) * SPRITE_SCALE;
 let lastSpriteFrameAt = 0;
 
 function updateSpriteFacing(p, dx, dy) {
@@ -2238,11 +2246,13 @@ function drawAvatar(p, isMe, connected) {
   const willDrawSprite =
     SPRITE_TEST && isMe && spriteImgReady && !!spriteImg.naturalWidth && !!spriteImg.naturalHeight;
   const feetY = willDrawSprite ? p.y + SPRITE_FEET_OFFSET : p.y;
+  // グローの中心は実測の足先位置（セル下端の余白ぶん上げる）に合わせる
+  const glowY = willDrawSprite ? feetY - SPRITE_FEET_VISUAL_INSET : feetY;
 
   if (p.active) {
     drawPresenceRing(
       p.x,
-      feetY,
+      glowY,
       r * 1.3,
       r * 0.32,
       "rgba(46, 204, 113, 0.9)",
@@ -2253,7 +2263,7 @@ function drawAvatar(p, isMe, connected) {
   if (connected) {
     drawPresenceRing(
       p.x,
-      feetY,
+      glowY,
       r * 1.7,
       r * 0.42,
       "rgba(52, 152, 219, 0.85)",
@@ -2305,10 +2315,10 @@ function drawAvatar(p, isMe, connected) {
   ctx.textAlign = "center";
   const label =
     safeDisplayName(p.name, isMe ? defaultName : "ゲスト") + (isMe ? "（あなた）" : "");
-  // アイコン(円/半径r)とスプライト(足元基準/高さSPRITE_DRAW_HEIGHT)で頭頂の高さが違うため、
-  // 実際に描いた見た目の上端を基準にラベルを置く
-  const avatarTopOffset = spriteDrawn ? SPRITE_DRAW_HEIGHT - SPRITE_FEET_OFFSET : r;
-  const labelY = p.y - avatarTopOffset - 8;
+  // アイコン(円/半径r)とスプライトで頭頂の高さが違う。スプライト側はセル内の実際の
+  // 髪の生え際（実測）を基準にすることで、絵の余白ぶん名前が浮くのを防ぐ
+  const avatarTopOffset = spriteDrawn ? SPRITE_HEAD_TOP_OFFSET - SPRITE_FEET_OFFSET : r;
+  const labelY = p.y - avatarTopOffset - 4;
   ctx.lineWidth = 3;
   ctx.strokeStyle = "rgba(0,0,0,0.7)"; // 明るい背景でも読めるよう縁取り
   ctx.strokeText(label, p.x, labelY);
@@ -2418,7 +2428,9 @@ function render() {
   }
 
   // 自分の通話範囲（部屋にいる時・アナウンス中は出さない）
-  if (currentArea === AREAS.OFFICE && !zoneOf(me) && !announcing) {
+  // [試作] スプライト表示中はキャラクターの見た目を優先し、この円は出さない
+  const spriteActiveForMe = SPRITE_TEST && spriteImgReady && !!spriteImg.naturalWidth && !!spriteImg.naturalHeight;
+  if (currentArea === AREAS.OFFICE && !zoneOf(me) && !announcing && !spriteActiveForMe) {
     ctx.beginPath();
     ctx.arc(me.x, me.y, CALL_RADIUS, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(52, 152, 219, 0.10)";
