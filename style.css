@@ -976,6 +976,80 @@ body.game-open #joystick {
   box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.4);
   background: rgba(255, 255, 255, 0.08);
 }
+.myavatar-launcher {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  padding: 14px 10px 10px;
+  border-radius: 14px;
+  border: none;
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+.myavatar-stage {
+  width: 100%;
+  height: 120px;
+  border-radius: 10px;
+  background: radial-gradient(120% 140% at 50% 18%, #1c2636, #0d1620);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.myavatar-stage canvas {
+  width: 96px;
+  height: 96px;
+  image-rendering: pixelated;
+}
+.myavatar-edit-badge {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  border: 3px solid #161b28;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* ---- アバター編集画面（プロフィール設定の子画面） ---- */
+#avatar-editor {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 121;
+  width: 320px;
+  max-width: 86vw;
+  display: flex;
+  flex-direction: column;
+  background: #161b28;
+  border-right: 0.5px solid var(--panel-border);
+  box-shadow: 6px 0 24px rgba(0, 0, 0, 0.5);
+  transform: translateX(0);
+  transition: transform 0.22s ease;
+}
+#avatar-editor[hidden] { display: none; }
+#avatar-editor.closing { transform: translateX(-100%); }
+.avatar-editor-stage {
+  display: flex;
+  justify-content: center;
+  border-radius: 12px;
+  padding: 12px 0;
+  background: radial-gradient(120% 140% at 50% 20%, #1c2636, #0d1620);
+}
+.avatar-editor-stage canvas {
+  width: 132px;
+  height: 132px;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 8px 8px rgba(0, 0, 0, 0.4));
+}
+
 .console-note { font-size: 12px; color: #9aa4b8; min-height: 1em; }
 .console-logout {
   margin-top: auto;

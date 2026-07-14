@@ -4197,13 +4197,22 @@ function renderConsolePreview() {
       me.iconType === "preset" && it.dataset.id === me.iconId
     );
   });
-  // キャラクターグリッドの選択状態
-  document.querySelectorAll("#character-grid .character-item").forEach((it) => {
+  // マイアバターのプレビュー（大きい1体表示）
+  const myavatarCanvas = document.getElementById("myavatar-canvas");
+  if (myavatarCanvas) drawCharacterThumbnail(myavatarCanvas, me.spriteCharacterId || DEFAULT_SPRITE_CHARACTER_ID);
+  renderAvatarEditorSelection();
+}
+
+// アバター編集画面（プリセットグリッド）の選択状態とプレビューを更新
+function renderAvatarEditorSelection() {
+  document.querySelectorAll("#avatar-editor-grid .character-item").forEach((it) => {
     it.classList.toggle(
       "selected",
       it.dataset.id === (me.spriteCharacterId || DEFAULT_SPRITE_CHARACTER_ID)
     );
   });
+  const editorCanvas = document.getElementById("avatar-editor-canvas");
+  if (editorCanvas) drawCharacterThumbnail(editorCanvas, me.spriteCharacterId || DEFAULT_SPRITE_CHARACTER_ID);
 }
 
 let consoleBuilt = false;
@@ -4243,7 +4252,7 @@ function drawCharacterThumbnail(canvasEl, characterId, attemptsLeft = 30) {
 }
 
 function buildCharacterGrid() {
-  const grid = document.getElementById("character-grid");
+  const grid = document.getElementById("avatar-editor-grid");
   if (!grid || grid.childElementCount) return;
   for (const c of SPRITE_CHARACTERS) {
     const item = document.createElement("button");
@@ -4271,9 +4280,30 @@ function buildCharacterGrid() {
   }
 }
 
+// マイアバターをタップ → プロフィール設定パネルの子画面としてアバター編集画面を開く
+function openAvatarEditor() {
+  buildCharacterGrid();
+  renderAvatarEditorSelection();
+  document.getElementById("console").hidden = true;
+  const panel = document.getElementById("avatar-editor");
+  panel.hidden = false;
+  panel.classList.add("closing"); // いったん画面外
+  requestAnimationFrame(() => panel.classList.remove("closing")); // スライドイン
+}
+
+// アバター編集画面の「‹」で戻る → プロフィール設定へ（保存はまだしない）
+function closeAvatarEditorToConsole() {
+  const panel = document.getElementById("avatar-editor");
+  panel.classList.add("closing");
+  setTimeout(() => {
+    panel.hidden = true;
+    panel.classList.remove("closing");
+  }, 220);
+  document.getElementById("console").hidden = false;
+}
+
 function openConsole() {
   buildPresetGrid();
-  buildCharacterGrid();
   const consoleName = document.getElementById("console-name");
   if (consoleName) consoleName.value = me.name || "";
   renderConsolePreview();
@@ -4299,6 +4329,15 @@ function closeConsole() {
     panel.hidden = true;
     panel.classList.remove("closing");
   }, 220);
+  // アバター編集画面（①の子画面）を開いたまま✕/背景クリックされた場合も一緒に畳む
+  const editorPanel = document.getElementById("avatar-editor");
+  if (editorPanel && !editorPanel.hidden) {
+    editorPanel.classList.add("closing");
+    setTimeout(() => {
+      editorPanel.hidden = true;
+      editorPanel.classList.remove("closing");
+    }, 220);
+  }
 }
 
 function setupConsole() {
@@ -4310,11 +4349,17 @@ function setupConsole() {
   const fileInput = document.getElementById("icon-file");
   const note = document.getElementById("console-note");
   const logoutBtn = document.getElementById("console-logout");
+  const myavatarLauncher = document.getElementById("myavatar-launcher");
+  const avatarEditorBack = document.getElementById("avatar-editor-back");
+  const avatarEditorClose = document.getElementById("avatar-editor-close");
 
   if (lobbyGear) lobbyGear.addEventListener("click", openConsole);
   if (ctrlGear) ctrlGear.addEventListener("click", openConsole);
   if (closeBtn) closeBtn.addEventListener("click", closeConsole);
   if (backdrop) backdrop.addEventListener("click", closeConsole);
+  if (myavatarLauncher) myavatarLauncher.addEventListener("click", openAvatarEditor);
+  if (avatarEditorBack) avatarEditorBack.addEventListener("click", closeAvatarEditorToConsole);
+  if (avatarEditorClose) avatarEditorClose.addEventListener("click", closeConsole);
 
   if (uploadBtn) uploadBtn.addEventListener("click", () => fileInput.click());
   if (fileInput)

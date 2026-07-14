@@ -285,8 +285,11 @@
         <input id="console-name" type="text" maxlength="16" placeholder="あなたの名前" />
       </label>
 
-      <div class="console-section-title">マップ上のキャラクターを選ぶ</div>
-      <div id="character-grid" class="character-grid"></div>
+      <div class="console-section-title">マイアバター</div>
+      <button id="myavatar-launcher" class="myavatar-launcher" type="button" aria-label="マイアバターを編集">
+        <div class="myavatar-stage"><canvas id="myavatar-canvas" width="96" height="96"></canvas></div>
+        <span class="myavatar-edit-badge"><i class="ti ti-pencil" aria-hidden="true"></i></span>
+      </button>
 
       <div class="console-section-title">アイコンを選ぶ（一覧・チャットで表示）</div>
       <div id="preset-grid" class="preset-grid"></div>
@@ -296,6 +299,22 @@
       <span id="console-note" class="console-note"></span>
 
       <button id="console-logout" class="console-logout" type="button"><i class="ti ti-logout" aria-hidden="true"></i> ログアウト</button>
+    </div>
+  </aside>
+
+  <!-- アバター編集画面（プロフィール設定の子画面・マイアバターをタップで表示） -->
+  <aside id="avatar-editor" hidden>
+    <div class="console-head">
+      <button id="avatar-editor-back" class="gear-btn" type="button" aria-label="戻る"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>
+      <span>アバターを着せ替える</span>
+      <button id="avatar-editor-close" class="gear-btn" type="button" aria-label="閉じる"><i class="ti ti-x" aria-hidden="true"></i></button>
+    </div>
+    <div class="console-body">
+      <div class="avatar-editor-stage">
+        <canvas id="avatar-editor-canvas" width="160" height="160"></canvas>
+      </div>
+      <div class="console-section-title">プリセット</div>
+      <div id="avatar-editor-grid" class="character-grid"></div>
     </div>
   </aside>
 
