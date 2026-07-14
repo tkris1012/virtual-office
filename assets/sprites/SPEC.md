@@ -74,7 +74,48 @@ assets/sprites/<character-id>/
 }
 ```
 
-登録すると、プロフィール設定の「マップ上のキャラクターを選ぶ」に自動で表示されます。
+登録すると、プロフィール設定の「マイアバター」→ アバター編集画面の「プリセット」に自動で表示されます。
+
+## パーツライブラリ（`assets/sprites/parts/` ・ `sprite-parts.js`）
+
+`sprite-characters.js` は「完成済みの1体」を丸ごと登録する仕組みですが、それとは別に
+**個別の装飾アイテム（髪型・トップス・ボトムス・靴・アクセサリーなど）を1点ずつ管理する
+ためのライブラリ**を `assets/sprites/parts/` に用意しています。将来的にアイテムを1点ずつ
+取得・着せ替えできるようにする機能はこちらを土台にする想定です（**現時点ではまだ
+どの画面からも参照されておらず、素材置き場として先行して用意している段階**です）。
+
+```
+assets/sprites/parts/
+  body/           体型・素体（肌色・顔など）。zPrefix の目安は 10・100 番台
+  hair/           髪型。120番台
+  tops/           トップス（シャツ・ブラウス・上着）。35・55番台
+  bottoms/        ボトムス（ズボン・スカート）。20番台
+  shoes/          靴。15番台
+  accessories/    ネクタイ・武具など。65・90・140番台など
+```
+
+- 各ファイルは LPCレイヤーPNG **1枚**（`sprite-characters.js` の `layers` 配列の1要素と同じもの）
+- ファイル名に重ね順の数字は付けない。重ね順は `sprite-parts.js` の各エントリが持つ
+  `zPrefix` フィールドで管理する
+- 登録は `sprite-parts.js` の `SPRITE_PARTS` 配列に1エントリ追加する
+
+```js
+{
+  id: "英数字の一意なID",
+  category: "body | hair | tops | bottoms | shoes | accessories",
+  bodyType: "male | female | skeleton など（体型が合わないと位置がズレるため必須）",
+  label: "画面に出す表示名",
+  file: "parts/以下の相対パス（例: hair/buzzcut__dark_brown_.png）",
+  zPrefix: 重ね順の数値（小さいほど奥）,
+}
+```
+
+- **単一シート形式（`standard/walk.png` 1枚だけ）のキャラクターはパーツに分解できません**。
+  パーツライブラリに載せたい場合はレイヤー分割形式で用意してください
+  （例：`male_casual` は単一シートのため未登録）
+- 同じ見た目のファイルが複数キャラクターに重複して存在する場合は、内容が同一かどうか
+  （`md5sum` などで）確認してから1つに集約する。**体型が違うと同名ファイルでも中身が
+  別物**なので注意（例: 男性用と女性用の `body_color__light_.png` は別物）
 
 ## 作成前チェックリスト
 
@@ -85,3 +126,5 @@ assets/sprites/<character-id>/
 - [ ] 各コマで足元の高さが揃っている
 - [ ] レイヤー分割の場合、全レイヤーのピクセルサイズが一致している
 - [ ] `sprite-characters.js` に登録した
+- [ ] （個別パーツとしても使う場合）`assets/sprites/parts/` にカテゴリ別で配置し、
+      `sprite-parts.js` に登録した
