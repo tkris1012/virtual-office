@@ -29,6 +29,12 @@ import {
 import { RTCManager, getIceServers, runIceTest } from "./rtc.js";
 import { MediaController } from "./media.js";
 import { PRESET_ICONS, presetById, defaultPresetIdFor, EMOJI_FONT } from "./avatars.js";
+import {
+  SPRITE_CHARACTER_BASE,
+  SPRITE_CHARACTERS,
+  DEFAULT_SPRITE_CHARACTER_ID,
+  spriteCharacterById,
+} from "./sprite-characters.js";
 import { SlimeGame } from "./slime-game.js";
 import { VirtualQuestGate } from "./virtual-quest-gate.js";
 
@@ -411,6 +417,7 @@ const me = {
   iconType: "preset", // "preset" | "upload"
   iconId: "", // プリセットID（iconType==="preset"）
   iconUrl: "", // アップロード画像URL（iconType==="upload"）
+  spriteCharacterId: DEFAULT_SPRITE_CHARACTER_ID, // マップ上のキャラクター（[試作] ?spritetest時のみ使用）
   message: "", // 在席中だけ表示する最新のひとこと（履歴・永続保存なし）
   messageEventId: "",
   active: false, // このタブが表示中かつ通話準備済み
@@ -563,6 +570,10 @@ function normalizePlayer(id, value) {
   const useUpload = value.iconType === "upload" && !!iconUrl;
   const requestedIconId = typeof value.iconId === "string" ? value.iconId : "";
   const iconId = presetById(requestedIconId) ? requestedIconId : defaultPresetIdFor(id);
+  const requestedCharacterId = typeof value.spriteCharacterId === "string" ? value.spriteCharacterId : "";
+  const spriteCharacterId = spriteCharacterById(requestedCharacterId)
+    ? requestedCharacterId
+    : DEFAULT_SPRITE_CHARACTER_ID;
   const area = normalizeArea(value.area);
   return {
     ...value,
@@ -573,6 +584,7 @@ function normalizePlayer(id, value) {
     iconType: useUpload ? "upload" : "preset",
     iconId,
     iconUrl: useUpload ? iconUrl : "",
+    spriteCharacterId,
     area,
     questAreaName: area !== AREAS.OFFICE ? safeDisplayName(value.questAreaName, AREA_LABELS[area]) : "",
     message:
@@ -615,6 +627,7 @@ function currentPresencePayload() {
     iconType: me.iconType === "upload" && me.iconUrl ? "upload" : "preset",
     iconId: me.iconId || defaultPresetIdFor(myId || ""),
     iconUrl: me.iconType === "upload" ? me.iconUrl || "" : "",
+    spriteCharacterId: me.spriteCharacterId || DEFAULT_SPRITE_CHARACTER_ID,
     announcing: !!announcing,
     sharing: !!(media && media.screenOn),
     message: me.message || null,
@@ -2010,14 +2023,11 @@ function drawImageCover(img, cx, cy, size) {
 
 const AVATAR_R = 16;
 
-// ---- [試作/テスト用] ドット絵スプライトアバター（?spritetest で有効化。自分の見た目にのみ適用） ----
-// Universal LPC Spritesheet Generator の標準書き出し（64x64セル・9フレーム・4方向）を使用。
-// クレジット: assets/sprites/lpc_male_animations_walk_20260714/credits/credits.txt を参照。
+// ---- [試作/テスト用] ドット絵スプライトアバター（?spritetest で有効化。全員の見た目に適用） ----
+// Universal LPC Spritesheet Generator の書き出し（64x64セル・9フレーム・4方向）を使用。
+// 各キャラクターはレイヤーPNG（体・服・髪など）を番号の昇順に重ねて合成する。
+// キャラクター一覧・クレジットは sprite-characters.js / assets/sprites/*/credits を参照。
 const SPRITE_TEST = new URLSearchParams(location.search).has("spritetest");
-const spriteImg = new Image();
-let spriteImgReady = false;
-spriteImg.onload = () => (spriteImgReady = true);
-spriteImg.src = "assets/sprites/lpc_male_animations_walk_20260714/standard/walk.png";
 const SPRITE_CELL = 64;
 const SPRITE_COLS = 9; // 実際に絵が入っているのは9コマ分（残り4列は空白パディング）
 // LPC標準の行順: 0=上向き, 1=左向き, 2=下向き, 3=右向き
@@ -2025,7 +2035,7 @@ const SPRITE_ROW_BY_FACING = { up: 0, left: 1, down: 2, right: 3 };
 const SPRITE_FRAME_MS = 100;
 const SPRITE_FEET_OFFSET = AVATAR_R * 0.5; // 足元(=当たり判定のp)をpからどれだけ下にずらすか
 const SPRITE_DRAW_HEIGHT = AVATAR_R * 3.2; // 描画するスプライトの高さ
-// セル(64px)内で実際に絵が入っている範囲を実測（4方向とも共通）。
+// セル(64px)内で実際に絵が入っている範囲を実測（4方向・全キャラ共通のLPC標準レイアウト）。
 // セル自体には髪の上・靴の下に余白があるため、名前ラベル/足元グローの位置合わせに使う。
 const SPRITE_CONTENT_TOP_ROW = 12;
 const SPRITE_CONTENT_BOTTOM_ROW = 61;
@@ -2033,7 +2043,63 @@ const SPRITE_SCALE = SPRITE_DRAW_HEIGHT / SPRITE_CELL;
 // feetY(=p.y+SPRITE_FEET_OFFSET, セル下端)から見た「本当の頭頂/足先」のオフセット
 const SPRITE_HEAD_TOP_OFFSET = SPRITE_DRAW_HEIGHT - SPRITE_CONTENT_TOP_ROW * SPRITE_SCALE;
 const SPRITE_FEET_VISUAL_INSET = SPRITE_DRAW_HEIGHT - (SPRITE_CONTENT_BOTTOM_ROW + 1) * SPRITE_SCALE;
-let lastSpriteFrameAt = 0;
+
+function encodeAssetPath(path) {
+  return path
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/");
+}
+
+// キャラクターごとのレイヤー合成キャッシュ。{ready, canvas} を characterId で保持する。
+const spriteCharacterCache = new Map();
+
+function loadSpriteCharacter(characterId) {
+  const existing = spriteCharacterCache.get(characterId);
+  if (existing) return existing;
+
+  const character = spriteCharacterById(characterId);
+  const state = { ready: false, canvas: null };
+  spriteCharacterCache.set(characterId, state);
+  if (!character) return state;
+
+  const folder = SPRITE_CHARACTER_BASE + character.folder + "/";
+  const images = character.layers.map((name) => {
+    const img = new Image();
+    img.src = encodeAssetPath(folder + name);
+    return img;
+  });
+
+  Promise.all(
+    images.map(
+      (img) =>
+        new Promise((resolve) => {
+          if (img.complete && img.naturalWidth) return resolve();
+          img.onload = () => resolve();
+          img.onerror = () => resolve(); // 1レイヤーの読込失敗で全体が止まらないようにする
+        })
+    )
+  ).then(() => {
+    const base = images.find((img) => img.naturalWidth);
+    if (!base) return; // 全レイヤー失敗 → readyのままfalseにしておく
+    const canvas = document.createElement("canvas");
+    canvas.width = base.naturalWidth;
+    canvas.height = base.naturalHeight;
+    const cctx = canvas.getContext("2d");
+    for (const img of images) {
+      if (img.naturalWidth) cctx.drawImage(img, 0, 0);
+    }
+    state.canvas = canvas;
+    state.ready = true;
+  });
+
+  return state;
+}
+
+function getSpriteCharacterCanvas(characterId) {
+  const state = loadSpriteCharacter(characterId || DEFAULT_SPRITE_CHARACTER_ID);
+  return state.ready ? state.canvas : null;
+}
 
 function updateSpriteFacing(p, dx, dy) {
   if (dx || dy) {
@@ -2044,21 +2110,42 @@ function updateSpriteFacing(p, dx, dy) {
   }
 }
 
-function updateSpriteAnimation(now) {
-  if (!me.spriteMoving) {
-    me.spriteFrame = 0;
+// 他人の位置更新（Firebase経由・間引かれている）から移動中かどうかを推定する。
+// 直近の移動から一定時間はアニメーションを継続させ、間引きによるカクつきを抑える。
+const SPRITE_REMOTE_MOVE_HOLD_MS = 220;
+function updateRemoteSpriteMotion(p, now) {
+  if (p._spriteLastX === undefined) {
+    p._spriteLastX = p.x;
+    p._spriteLastY = p.y;
     return;
   }
-  if (now - lastSpriteFrameAt > SPRITE_FRAME_MS) {
-    me.spriteFrame = ((me.spriteFrame || 0) + 1) % SPRITE_COLS;
-    lastSpriteFrameAt = now;
+  const dx = p.x - p._spriteLastX;
+  const dy = p.y - p._spriteLastY;
+  if (dx || dy) {
+    updateSpriteFacing(p, dx, dy);
+    p._spriteLastMoveAt = now;
+    p._spriteLastX = p.x;
+    p._spriteLastY = p.y;
+  } else if (p._spriteLastMoveAt && now - p._spriteLastMoveAt > SPRITE_REMOTE_MOVE_HOLD_MS) {
+    p.spriteMoving = false;
   }
 }
 
-// 自分のアバターだけスプライト描画に差し替える（他人・DBスキーマには一切影響しない試作）
+function updateSpriteAnimation(p, now) {
+  if (!p.spriteMoving) {
+    p.spriteFrame = 0;
+    return;
+  }
+  if (now - (p._spriteFrameAt || 0) > SPRITE_FRAME_MS) {
+    p.spriteFrame = ((p.spriteFrame || 0) + 1) % SPRITE_COLS;
+    p._spriteFrameAt = now;
+  }
+}
+
+// スプライト描画に差し替える（?spritetest 時、全プレイヤーに適用）
 function drawSpriteAvatar(p) {
-  if (!spriteImgReady) return false;
-  if (!spriteImg.naturalWidth || !spriteImg.naturalHeight) return false;
+  const sheet = getSpriteCharacterCanvas(p.spriteCharacterId);
+  if (!sheet) return false;
   const row = SPRITE_ROW_BY_FACING[p.facing || "down"];
   const col = (p.spriteFrame || 0) % SPRITE_COLS;
   const destH = SPRITE_DRAW_HEIGHT;
@@ -2069,7 +2156,7 @@ function drawSpriteAvatar(p) {
   // LPC標準は各セル内で足元がほぼ底に揃っているため、下端中央をpに合わせるだけでズレない
   ctx.translate(p.x, p.y + SPRITE_FEET_OFFSET);
   ctx.drawImage(
-    spriteImg,
+    sheet,
     col * SPRITE_CELL,
     row * SPRITE_CELL,
     SPRITE_CELL,
@@ -2241,10 +2328,9 @@ function drawPresenceRing(cx, cy, halfW, halfH, strokeColor, glowColor, lineWidt
 
 function drawAvatar(p, isMe, connected) {
   const r = AVATAR_R;
-  // [試作] 自分の見た目だけドット絵スプライトに差し替え（?spritetest 時のみ）。
+  // [試作] ドット絵スプライトに差し替え（?spritetest 時、全員に適用）。
   // 足元(=グローの中心)の高さがアイコンとスプライトで違うため、描画前に判定しておく。
-  const willDrawSprite =
-    SPRITE_TEST && isMe && spriteImgReady && !!spriteImg.naturalWidth && !!spriteImg.naturalHeight;
+  const willDrawSprite = SPRITE_TEST && !!getSpriteCharacterCanvas(p.spriteCharacterId);
   const feetY = willDrawSprite ? p.y + SPRITE_FEET_OFFSET : p.y;
   // グローの中心は実測の足先位置（セル下端の余白ぶん上げる）に合わせる
   const glowY = willDrawSprite ? feetY - SPRITE_FEET_VISUAL_INSET : feetY;
@@ -3166,7 +3252,13 @@ canvas.addEventListener("pointercancel", () => {
 function loop(now) {
   const t = now || performance.now();
   step();
-  if (SPRITE_TEST) updateSpriteAnimation(t);
+  if (SPRITE_TEST) {
+    updateSpriteAnimation(me, t);
+    for (const id in others) {
+      updateRemoteSpriteMotion(others[id], t);
+      updateSpriteAnimation(others[id], t);
+    }
+  }
   updateGameArea(t);
   if (virtualQuestGate && currentArea === AREAS.OFFICE) virtualQuestGate.update(t);
   updateVirtualQuestComingSoon();
@@ -3562,6 +3654,9 @@ function applyProfileToMe(p) {
   me.iconType = p.iconType === "upload" ? "upload" : "preset";
   me.iconId = p.iconId || "";
   me.iconUrl = p.iconUrl || "";
+  me.spriteCharacterId = spriteCharacterById(p.spriteCharacterId)
+    ? p.spriteCharacterId
+    : DEFAULT_SPRITE_CHARACTER_ID;
 }
 
 // サインイン直後に呼ぶ。クラウドと端末の控えの「新しい方」を採用する。
@@ -3592,6 +3687,7 @@ async function loadUserProfile(user) {
       iconType: "preset",
       iconId: defaultPresetIdFor(user.uid),
       iconUrl: "",
+      spriteCharacterId: DEFAULT_SPRITE_CHARACTER_ID,
       updatedAt: Date.now(),
     };
   }
@@ -3617,6 +3713,7 @@ function saveProfile() {
     iconType: me.iconType || "preset",
     iconId: me.iconId || "",
     iconUrl: me.iconUrl || "",
+    spriteCharacterId: me.spriteCharacterId || DEFAULT_SPRITE_CHARACTER_ID,
     updatedAt: Date.now(),
   };
   // まず端末ローカルに控える（クラウド書き込みが失敗しても保持される）
@@ -3633,6 +3730,7 @@ function saveProfile() {
       iconType: data.iconType,
       iconId: data.iconId,
       iconUrl: data.iconUrl,
+      spriteCharacterId: data.spriteCharacterId,
     }).catch(() => {});
   }
   // 自分の映像タイルの名前も更新
@@ -3742,6 +3840,13 @@ function renderConsolePreview() {
       me.iconType === "preset" && it.dataset.id === me.iconId
     );
   });
+  // キャラクターグリッドの選択状態
+  document.querySelectorAll("#character-grid .character-item").forEach((it) => {
+    it.classList.toggle(
+      "selected",
+      it.dataset.id === (me.spriteCharacterId || DEFAULT_SPRITE_CHARACTER_ID)
+    );
+  });
 }
 
 let consoleBuilt = false;
@@ -3766,8 +3871,52 @@ function buildPresetGrid() {
   }
 }
 
+// キャラクターの向き=下・1コマ目のサムネイルを描く。合成が未完了ならしばらくリトライする。
+function drawCharacterThumbnail(canvasEl, characterId, attemptsLeft = 30) {
+  const sheet = getSpriteCharacterCanvas(characterId);
+  const cctx = canvasEl.getContext("2d");
+  if (!sheet) {
+    if (attemptsLeft > 0) setTimeout(() => drawCharacterThumbnail(canvasEl, characterId, attemptsLeft - 1), 150);
+    return;
+  }
+  cctx.imageSmoothingEnabled = false;
+  cctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+  const row = SPRITE_ROW_BY_FACING.down;
+  cctx.drawImage(sheet, 0, row * SPRITE_CELL, SPRITE_CELL, SPRITE_CELL, 0, 0, canvasEl.width, canvasEl.height);
+}
+
+function buildCharacterGrid() {
+  const grid = document.getElementById("character-grid");
+  if (!grid || grid.childElementCount) return;
+  for (const c of SPRITE_CHARACTERS) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "character-item";
+    item.dataset.id = c.id;
+    item.title = c.label;
+
+    const canvasEl = document.createElement("canvas");
+    canvasEl.width = 48;
+    canvasEl.height = 48;
+    item.appendChild(canvasEl);
+    loadSpriteCharacter(c.id); // 合成を開始
+    drawCharacterThumbnail(canvasEl, c.id);
+
+    const labelEl = document.createElement("span");
+    labelEl.textContent = c.label;
+    item.appendChild(labelEl);
+
+    item.addEventListener("click", () => {
+      me.spriteCharacterId = c.id;
+      renderConsolePreview();
+    });
+    grid.appendChild(item);
+  }
+}
+
 function openConsole() {
   buildPresetGrid();
+  buildCharacterGrid();
   const consoleName = document.getElementById("console-name");
   if (consoleName) consoleName.value = me.name || "";
   renderConsolePreview();
