@@ -2011,41 +2011,18 @@ function drawImageCover(img, cx, cy, size) {
 const AVATAR_R = 16;
 
 // ---- [試作/テスト用] ドット絵スプライトアバター（?spritetest で有効化。自分の見た目にのみ適用） ----
+// Universal LPC Spritesheet Generator の標準書き出し（64x64セル・9フレーム・4方向）を使用。
+// クレジット: assets/sprites/lpc_male_animations_walk_20260714/credits/credits.txt を参照。
 const SPRITE_TEST = new URLSearchParams(location.search).has("spritetest");
 const spriteImg = new Image();
 let spriteImgReady = false;
 spriteImg.onload = () => (spriteImgReady = true);
-spriteImg.src = "assets/sprites/男性_ドット絵_スプライト.png";
-const SPRITE_COLS = 4;
-// 各コマの実座標（背景除去/位置解析で実測。セルを均等分割すると余白込みでズレるため実測値を使う）
-// 2行目=左向き, 3行目=右向き（ピクセル比較で2行目の左右反転とほぼ一致することを確認済み＝本物の右向きコマ）
-const SPRITE_FRAMES_BY_FACING = {
-  down: [
-    { x: 144, y: 37, w: 160, h: 274 },
-    { x: 409, y: 37, w: 156, h: 274 },
-    { x: 674, y: 37, w: 154, h: 274 },
-    { x: 934, y: 37, w: 162, h: 274 },
-  ],
-  left: [
-    { x: 149, y: 338, w: 139, h: 259 },
-    { x: 412, y: 338, w: 142, h: 259 },
-    { x: 674, y: 338, w: 140, h: 259 },
-    { x: 940, y: 338, w: 141, h: 259 },
-  ],
-  right: [
-    { x: 151, y: 633, w: 138, h: 260 },
-    { x: 415, y: 633, w: 138, h: 260 },
-    { x: 677, y: 633, w: 138, h: 260 },
-    { x: 942, y: 633, w: 138, h: 260 },
-  ],
-  up: [
-    { x: 144, y: 920, w: 151, h: 268 },
-    { x: 410, y: 920, w: 150, h: 268 },
-    { x: 674, y: 920, w: 148, h: 268 },
-    { x: 935, y: 920, w: 153, h: 268 },
-  ],
-};
-const SPRITE_FRAME_MS = 130;
+spriteImg.src = "assets/sprites/lpc_male_animations_walk_20260714/standard/walk.png";
+const SPRITE_CELL = 64;
+const SPRITE_COLS = 9; // 実際に絵が入っているのは9コマ分（残り4列は空白パディング）
+// LPC標準の行順: 0=上向き, 1=左向き, 2=下向き, 3=右向き
+const SPRITE_ROW_BY_FACING = { up: 0, left: 1, down: 2, right: 3 };
+const SPRITE_FRAME_MS = 100;
 let lastSpriteFrameAt = 0;
 
 function updateSpriteFacing(p, dx, dy) {
@@ -2072,18 +2049,26 @@ function updateSpriteAnimation(now) {
 function drawSpriteAvatar(p) {
   if (!spriteImgReady) return false;
   if (!spriteImg.naturalWidth || !spriteImg.naturalHeight) return false;
-  const facing = p.facing || "down";
-  const frames = SPRITE_FRAMES_BY_FACING[facing] || SPRITE_FRAMES_BY_FACING.down;
-  const frame = frames[(p.spriteFrame || 0) % frames.length];
-  const destH = AVATAR_R * 3.6;
-  const destW = destH * (frame.w / frame.h);
+  const row = SPRITE_ROW_BY_FACING[p.facing || "down"];
+  const col = (p.spriteFrame || 0) % SPRITE_COLS;
+  const destH = AVATAR_R * 3.2;
+  const destW = destH; // セルが正方形(64x64)なので描画先も正方形でよい
 
   ctx.save();
   ctx.imageSmoothingEnabled = false; // ドット絵をぼかさない
-  // 各コマは実測の当たり判定＝足元がコマの下端に来るよう切り出し済みなので、
-  // pの位置に下端中央を合わせるだけで向き/コマが変わってもズレない
-  ctx.translate(p.x, p.y + AVATAR_R * 0.4);
-  ctx.drawImage(spriteImg, frame.x, frame.y, frame.w, frame.h, -destW / 2, -destH, destW, destH);
+  // LPC標準は各セル内で足元がほぼ底に揃っているため、下端中央をpに合わせるだけでズレない
+  ctx.translate(p.x, p.y + AVATAR_R * 0.5);
+  ctx.drawImage(
+    spriteImg,
+    col * SPRITE_CELL,
+    row * SPRITE_CELL,
+    SPRITE_CELL,
+    SPRITE_CELL,
+    -destW / 2,
+    -destH,
+    destW,
+    destH
+  );
   ctx.restore();
   return true;
 }
