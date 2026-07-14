@@ -1,0 +1,146 @@
+{
+  "exportTimestamp": "2026-07-14T02-27-23",
+  "bodyType": "male",
+  "standardAnimations": {
+    "exported": {
+      "spellcast": [
+        "010 skeleton__skeleton_.png",
+        "100 skeleton__skeleton_.png",
+        "101 neutral__light_.png",
+        "065 bauldron__lavender_.png"
+      ],
+      "thrust": [
+        "010 skeleton__skeleton_.png",
+        "100 skeleton__skeleton_.png",
+        "101 neutral__light_.png",
+        "065 bauldron__lavender_.png"
+      ],
+      "walk": [
+        "010 skeleton__skeleton_.png",
+        "100 skeleton__skeleton_.png",
+        "101 neutral__light_.png",
+        "065 bauldron__lavender_.png",
+        "140 smash__axe_.png"
+      ],
+      "slash": [
+        "010 skeleton__skeleton_.png",
+        "100 skeleton__skeleton_.png",
+        "101 neutral__light_.png",
+        "065 bauldron__lavender_.png"
+      ],
+      "shoot": [
+        "010 skeleton__skeleton_.png",
+        "100 skeleton__skeleton_.png",
+        "101 neutral__light_.png",
+        "065 bauldron__lavender_.png"
+      ],
+      "hurt": [
+        "010 skeleton__skeleton_.png",
+        "100 skeleton__skeleton_.png",
+        "065 bauldron__lavender_.png"
+      ],
+      "climb": [
+        "100 skeleton__skeleton_.png",
+        "065 bauldron__lavender_.png"
+      ],
+      "idle": [
+        "100 skeleton__skeleton_.png",
+        "101 neutral__light_.png",
+        "065 bauldron__lavender_.png"
+      ],
+      "jump": [
+        "100 skeleton__skeleton_.png",
+        "101 neutral__light_.png",
+        "065 bauldron__lavender_.png"
+      ],
+      "sit": [
+        "100 skeleton__skeleton_.png",
+        "101 neutral__light_.png",
+        "065 bauldron__lavender_.png"
+      ],
+      "emote": [
+        "100 skeleton__skeleton_.png",
+        "101 neutral__light_.png",
+        "065 bauldron__lavender_.png"
+      ],
+      "run": [
+        "100 skeleton__skeleton_.png",
+        "101 neutral__light_.png",
+        "065 bauldron__lavender_.png"
+      ],
+      "combat": [
+        "100 skeleton__skeleton_.png",
+        "101 neutral__light_.png"
+      ],
+      "1h_backslash": [
+        "100 skeleton__skeleton_.png",
+        "101 neutral__light_.png"
+      ],
+      "1h_halfslash": [
+        "100 skeleton__skeleton_.png",
+        "101 neutral__light_.png"
+      ]
+    },
+    "failed": {
+      "spellcast": [],
+      "thrust": [],
+      "walk": [],
+      "slash": [],
+      "shoot": [],
+      "hurt": [],
+      "climb": [],
+      "idle": [],
+      "jump": [],
+      "sit": [],
+      "emote": [],
+      "run": [],
+      "combat": [],
+      "1h_backslash": [],
+      "1h_halfslash": []
+    }
+  },
+  "customAnimations": {
+    "exported": {
+      "slash_128": [
+        "009 smash__axe_.png",
+        "010 skeleton__skeleton_.png",
+        "065 bauldron__lavender_.png",
+        "100 skeleton__skeleton_.png",
+        "150 smash__axe_.png"
+      ]
+    },
+    "failed": {
+      "slash_128": [
+        "101 neutral__light_.png"
+      ]
+    }
+  },
+  "frameSize": 64,
+  "frameCounts": {},
+  "performance": {
+    "exportKind": "splitItemAnimations",
+    "totalMs": 797,
+    "phasesMs": {
+      "render_imageLoadDecode_renderSingleItemAnimation": 164.8,
+      "render_composite_renderSingleItemAnimation": 2.5,
+      "pngEncode": 570.9,
+      "zipFile": 7.1,
+      "render_imageLoadDecode_customItemSprite": 10.5,
+      "render_composite_customItemSprite": 1.3,
+      "drawAndSlice": 2.3,
+      "staticFiles": 0.8
+    },
+    "counters": {
+      "pngEncodeCount": 52,
+      "totalPngBytes": 536147,
+      "drawAndSliceCount": 5,
+      "zipFileEntryCount": 52,
+      "renderExtractAnimationFromCanvasCalls": 0,
+      "renderSingleItemCalls": 0,
+      "renderSingleItemAnimationCalls": 47,
+      "extractFramesFromAnimationBatchCount": 0,
+      "renderSliceCanvasForCustomAnimCalls": 0
+    },
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+  }
+}

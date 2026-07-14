@@ -1,0 +1,186 @@
+{
+  "exportTimestamp": "2026-07-14T02-16-18",
+  "bodyType": "male",
+  "standardAnimations": {
+    "exported": {
+      "spellcast": [
+        "010 body_color__light_.png",
+        "120 cornrows__black_.png",
+        "035 collared_formal_longsleeve__white_.png",
+        "055 collared_coat__charcoal_.png",
+        "090 necktie__maroon_.png",
+        "020 formal_pants__black_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_male__light_.png"
+      ],
+      "thrust": [
+        "010 body_color__light_.png",
+        "120 cornrows__black_.png",
+        "035 collared_formal_longsleeve__white_.png",
+        "055 collared_coat__charcoal_.png",
+        "090 necktie__maroon_.png",
+        "020 formal_pants__black_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_male__light_.png"
+      ],
+      "walk": [
+        "010 body_color__light_.png",
+        "120 cornrows__black_.png",
+        "035 collared_formal_longsleeve__white_.png",
+        "055 collared_coat__charcoal_.png",
+        "090 necktie__maroon_.png",
+        "020 formal_pants__black_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_male__light_.png"
+      ],
+      "slash": [
+        "010 body_color__light_.png",
+        "120 cornrows__black_.png",
+        "035 collared_formal_longsleeve__white_.png",
+        "055 collared_coat__charcoal_.png",
+        "090 necktie__maroon_.png",
+        "020 formal_pants__black_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_male__light_.png"
+      ],
+      "shoot": [
+        "010 body_color__light_.png",
+        "120 cornrows__black_.png",
+        "035 collared_formal_longsleeve__white_.png",
+        "055 collared_coat__charcoal_.png",
+        "090 necktie__maroon_.png",
+        "020 formal_pants__black_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_male__light_.png"
+      ],
+      "hurt": [
+        "010 body_color__light_.png",
+        "120 cornrows__black_.png",
+        "035 collared_formal_longsleeve__white_.png",
+        "055 collared_coat__charcoal_.png",
+        "090 necktie__maroon_.png",
+        "020 formal_pants__black_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_male__light_.png"
+      ],
+      "climb": [
+        "010 body_color__light_.png",
+        "120 cornrows__black_.png",
+        "090 necktie__maroon_.png",
+        "020 formal_pants__black_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_male__light_.png"
+      ],
+      "idle": [
+        "010 body_color__light_.png",
+        "120 cornrows__black_.png",
+        "090 necktie__maroon_.png",
+        "020 formal_pants__black_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_male__light_.png"
+      ],
+      "jump": [
+        "010 body_color__light_.png",
+        "120 cornrows__black_.png",
+        "090 necktie__maroon_.png",
+        "020 formal_pants__black_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_male__light_.png"
+      ],
+      "sit": [
+        "010 body_color__light_.png",
+        "120 cornrows__black_.png",
+        "090 necktie__maroon_.png",
+        "020 formal_pants__black_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_male__light_.png"
+      ],
+      "emote": [
+        "010 body_color__light_.png",
+        "120 cornrows__black_.png",
+        "090 necktie__maroon_.png",
+        "020 formal_pants__black_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_male__light_.png"
+      ],
+      "run": [
+        "010 body_color__light_.png",
+        "120 cornrows__black_.png",
+        "090 necktie__maroon_.png",
+        "020 formal_pants__black_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_male__light_.png"
+      ],
+      "combat": [
+        "010 body_color__light_.png",
+        "120 cornrows__black_.png",
+        "090 necktie__maroon_.png",
+        "020 formal_pants__black_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_male__light_.png"
+      ],
+      "1h_backslash": [
+        "010 body_color__light_.png",
+        "120 cornrows__black_.png",
+        "090 necktie__maroon_.png",
+        "020 formal_pants__black_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_male__light_.png"
+      ],
+      "1h_halfslash": [
+        "010 body_color__light_.png",
+        "120 cornrows__black_.png",
+        "090 necktie__maroon_.png",
+        "020 formal_pants__black_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_male__light_.png"
+      ]
+    },
+    "failed": {
+      "spellcast": [],
+      "thrust": [],
+      "walk": [],
+      "slash": [],
+      "shoot": [],
+      "hurt": [],
+      "climb": [],
+      "idle": [],
+      "jump": [],
+      "sit": [],
+      "emote": [],
+      "run": [],
+      "combat": [],
+      "1h_backslash": [],
+      "1h_halfslash": []
+    }
+  },
+  "customAnimations": {
+    "exported": {},
+    "failed": {}
+  },
+  "frameSize": 64,
+  "frameCounts": {},
+  "performance": {
+    "exportKind": "splitItemAnimations",
+    "totalMs": 2374.4,
+    "phasesMs": {
+      "render_imageLoadDecode_renderSingleItemAnimation": 19.8,
+      "render_composite_renderSingleItemAnimation": 9.4,
+      "pngEncode": 2292.9,
+      "zipFile": 16.2,
+      "staticFiles": 0.4
+    },
+    "counters": {
+      "pngEncodeCount": 102,
+      "totalPngBytes": 1048756,
+      "drawAndSliceCount": 0,
+      "zipFileEntryCount": 102,
+      "renderExtractAnimationFromCanvasCalls": 0,
+      "renderSingleItemCalls": 0,
+      "renderSingleItemAnimationCalls": 102,
+      "extractFramesFromAnimationBatchCount": 0,
+      "renderSliceCanvasForCustomAnimCalls": 0
+    },
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+  }
+}
