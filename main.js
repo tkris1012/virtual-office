@@ -35,6 +35,7 @@ import {
   DEFAULT_SPRITE_CHARACTER_ID,
   spriteCharacterById,
 } from "./sprite-characters.js";
+import { SPRITE_PARTS_BASE, partsByCategory, partById } from "./sprite-parts.js";
 import { SlimeGame } from "./slime-game.js";
 import { VirtualQuestGate } from "./virtual-quest-gate.js";
 
@@ -530,6 +531,60 @@ function isPlayerInCurrentArea(player) {
   return areaOfPlayer(player) === currentArea;
 }
 
+// =============================================================
+//  アバターのパーツ個別着せ替え（sprite-parts.js のパーツライブラリを使用）
+//  プリセット（sprite-characters.js）とは別に、体型・髪型・トップス・ボトムス・
+//  靴・アクセサリーを個別に組み合わせて1体を合成する。
+// =============================================================
+const CUSTOM_SPRITE_ID = "custom";
+const BODY_TYPE_OPTIONS = [
+  { id: "male", label: "男性" },
+  { id: "female", label: "女性" },
+  { id: "skeleton", label: "スケルトン" },
+];
+const PART_CATEGORY_ALLOW_NONE = { hair: true, tops: false, bottoms: false, shoes: false, accessories: true };
+
+// 既存プリセットをパーツの組み合わせとして表した対応表（プリセット選択時に
+// パーツタブ側の選択状態も揃えるために使う）。male_casual は単一シートで
+// パーツに分解できないため含まない。
+const PRESET_PART_DECOMPOSITION = {
+  male_suit_navy: { bodyType: "male", hair: "hair_buzzcut_dark_brown", tops: "top_coat_navy", bottoms: "bottom_pants_charcoal", shoes: "shoes_black_male", accessories: "accessory_necktie_red" },
+  male_suit_charcoal: { bodyType: "male", hair: "hair_cornrows_black", tops: "top_coat_charcoal", bottoms: "bottom_pants_black", shoes: "shoes_black_male", accessories: "accessory_necktie_maroon" },
+  female_blouse_navy: { bodyType: "female", hair: "hair_bob_dark_brown", tops: "top_blouse_navy", bottoms: "bottom_skirt_charcoal", shoes: "shoes_black_female", accessories: null },
+  female_office_casual: { bodyType: "female", hair: "hair_half_up_chestnut", tops: "top_blouse_sky", bottoms: "bottom_skirt_gray", shoes: "shoes_brown_female", accessories: null },
+  skeleton: { bodyType: "skeleton", hair: null, tops: null, bottoms: null, shoes: null, accessories: null }, // スケルトンの体・武具は resolveCustomLayers 側で自動固定
+};
+const BODY_TYPE_DEFAULT_PARTS = {
+  male: PRESET_PART_DECOMPOSITION.male_suit_navy,
+  female: PRESET_PART_DECOMPOSITION.female_blouse_navy,
+  skeleton: PRESET_PART_DECOMPOSITION.skeleton,
+};
+
+function defaultPartsForCharacter(characterId) {
+  return { ...(PRESET_PART_DECOMPOSITION[characterId] || BODY_TYPE_DEFAULT_PARTS.male) };
+}
+
+// 未知の値・存在しないIDが混ざっても必ず描画可能な組み合わせを返す（他人から届いた値の検証にも使用）
+function sanitizeSpriteParts(raw) {
+  const bodyType = raw && BODY_TYPE_DEFAULT_PARTS[raw.bodyType] ? raw.bodyType : "male";
+  const defaults = BODY_TYPE_DEFAULT_PARTS[bodyType];
+  const pick = (category, fallbackId) => {
+    const value = raw && typeof raw === "object" ? raw[category] : undefined;
+    if (value === null) return null; // 明示的な「なし」
+    if (typeof value !== "string") return fallbackId;
+    const part = partById(value);
+    return part && part.category === category && part.bodyType === bodyType ? part.id : fallbackId;
+  };
+  return {
+    bodyType,
+    hair: pick("hair", defaults.hair),
+    tops: pick("tops", defaults.tops),
+    bottoms: pick("bottoms", defaults.bottoms),
+    shoes: pick("shoes", defaults.shoes),
+    accessories: pick("accessories", defaults.accessories),
+  };
+}
+
 const me = {
   x: W * 0.45, // 中央の島デスクあたり
   y: H * 0.5,
@@ -538,7 +593,8 @@ const me = {
   iconType: "preset", // "preset" | "upload"
   iconId: "", // プリセットID（iconType==="preset"）
   iconUrl: "", // アップロード画像URL（iconType==="upload"）
-  spriteCharacterId: DEFAULT_SPRITE_CHARACTER_ID, // マップ上のキャラクター（[試作] ?spritetest時のみ使用）
+  spriteCharacterId: DEFAULT_SPRITE_CHARACTER_ID, // マップ上のキャラクター（プリセット選択時）。パーツ個別編集時は CUSTOM_SPRITE_ID
+  spriteParts: defaultPartsForCharacter(DEFAULT_SPRITE_CHARACTER_ID), // パーツ個別編集の現在値（体型・髪型・トップス・ボトムス・靴・アクセサリー）
   message: "", // 在席中だけ表示する最新のひとこと（履歴・永続保存なし）
   messageEventId: "",
   active: false, // このタブが表示中かつ通話準備済み
@@ -733,9 +789,11 @@ function normalizePlayer(id, value) {
   const requestedIconId = typeof value.iconId === "string" ? value.iconId : "";
   const iconId = presetById(requestedIconId) ? requestedIconId : defaultPresetIdFor(id);
   const requestedCharacterId = typeof value.spriteCharacterId === "string" ? value.spriteCharacterId : "";
-  const spriteCharacterId = spriteCharacterById(requestedCharacterId)
-    ? requestedCharacterId
-    : DEFAULT_SPRITE_CHARACTER_ID;
+  const spriteCharacterId =
+    requestedCharacterId === CUSTOM_SPRITE_ID || spriteCharacterById(requestedCharacterId)
+      ? requestedCharacterId
+      : DEFAULT_SPRITE_CHARACTER_ID;
+  const spriteParts = sanitizeSpriteParts(value.spriteParts);
   const area = normalizeArea(value.area);
   return {
     ...value,
@@ -747,6 +805,7 @@ function normalizePlayer(id, value) {
     iconId,
     iconUrl: useUpload ? iconUrl : "",
     spriteCharacterId,
+    spriteParts,
     area,
     questAreaName: area !== AREAS.OFFICE ? safeDisplayName(value.questAreaName, AREA_LABELS[area]) : "",
     message:
@@ -790,6 +849,7 @@ function currentPresencePayload() {
     iconId: me.iconId || defaultPresetIdFor(myId || ""),
     iconUrl: me.iconType === "upload" ? me.iconUrl || "" : "",
     spriteCharacterId: me.spriteCharacterId || DEFAULT_SPRITE_CHARACTER_ID,
+    spriteParts: me.spriteParts || defaultPartsForCharacter(DEFAULT_SPRITE_CHARACTER_ID),
     announcing: !!announcing,
     sharing: !!(media && media.screenOn),
     message: me.message || null,
@@ -2303,11 +2363,13 @@ function encodeAssetPath(path) {
 // キャラクターごとのレイヤー合成キャッシュ。{ready, canvas} を characterId で保持する。
 const spriteCharacterCache = new Map();
 
-function loadSpriteCharacter(characterId) {
+// characterOverride を渡すと sprite-characters.js のレジストリを介さず
+// 任意の {folder, layers} を合成できる（パーツ組み合わせのカスタム着せ替え用）。
+function loadSpriteCharacter(characterId, characterOverride) {
   const existing = spriteCharacterCache.get(characterId);
   if (existing) return existing;
 
-  const character = spriteCharacterById(characterId);
+  const character = characterOverride || spriteCharacterById(characterId);
   const state = { ready: false, canvas: null };
   spriteCharacterCache.set(characterId, state);
   if (!character) return state;
@@ -2348,6 +2410,74 @@ function loadSpriteCharacter(characterId) {
 function getSpriteCharacterCanvas(characterId) {
   const state = loadSpriteCharacter(characterId || DEFAULT_SPRITE_CHARACTER_ID);
   return state.ready ? state.canvas : null;
+}
+
+// パーツ選択から実際に重ねるレイヤー（zPrefix昇順）を組み立てる。
+// コート選択時は下に着るシャツを自動で補う（sprite-characters.js の元プリセットと同じ見た目にするため）。
+function resolveCustomLayers(parts) {
+  const items = [];
+  const add = (partId) => {
+    const part = partById(partId);
+    if (part) items.push(part);
+  };
+
+  if (parts.bodyType === "skeleton") {
+    add("body_skeleton_base");
+    add("accessory_bauldron_lavender");
+    add("body_skeleton_detail");
+    add("body_skeleton_face_neutral");
+    add("accessory_axe");
+  } else if (parts.bodyType === "female") {
+    add("body_light_female");
+    add("head_light_female");
+  } else {
+    add("body_light_male");
+    add("head_light_male");
+  }
+
+  if (parts.bodyType !== "skeleton") {
+    if (parts.hair) add(parts.hair);
+    if (parts.shoes) add(parts.shoes);
+    if (parts.bottoms) add(parts.bottoms);
+    if (parts.tops === "top_coat_navy" || parts.tops === "top_coat_charcoal") {
+      add("top_shirt_white"); // コートの下に着るシャツ
+    }
+    if (parts.tops) add(parts.tops);
+    if (parts.accessories) add(parts.accessories);
+  }
+
+  items.sort((a, b) => a.zPrefix - b.zPrefix);
+  return items.map((p) => p.file);
+}
+
+function customSpriteCacheKey(parts) {
+  return [
+    "custom",
+    parts.bodyType || "",
+    parts.hair || "",
+    parts.tops || "",
+    parts.bottoms || "",
+    parts.shoes || "",
+    parts.accessories || "",
+  ].join("|");
+}
+
+function getCustomSpriteCanvas(parts) {
+  if (!parts) return null;
+  const layers = resolveCustomLayers(parts);
+  if (!layers.length) return null;
+  const state = loadSpriteCharacter(customSpriteCacheKey(parts), { folder: "parts", layers });
+  return state.ready ? state.canvas : null;
+}
+
+// プレイヤーの現在の見た目（プリセット or カスタム）に応じたスプライトシートを返す。
+// spriteParts は normalizePlayer/applyProfileToMe で受信時に既に sanitizeSpriteParts 済み
+// という前提だが、resolveCustomLayers 自体も不正なIDを黙ってスキップするため二重に安全。
+function getPlayerSpriteCanvas(p) {
+  if (p.spriteCharacterId === CUSTOM_SPRITE_ID) {
+    return getCustomSpriteCanvas(p.spriteParts);
+  }
+  return getSpriteCharacterCanvas(p.spriteCharacterId);
 }
 
 // normalizePlayer() は毎回新しいオブジェクトを返すため、others[id] を置き換える前に
@@ -2407,7 +2537,7 @@ function updateSpriteAnimation(p, now) {
 
 // スプライト描画に差し替える（?spritetest 時、全プレイヤーに適用）
 function drawSpriteAvatar(p) {
-  const sheet = getSpriteCharacterCanvas(p.spriteCharacterId);
+  const sheet = getPlayerSpriteCanvas(p);
   if (!sheet) return false;
   const row = SPRITE_ROW_BY_FACING[p.facing || "down"];
   const col = (p.spriteFrame || 0) % SPRITE_COLS;
@@ -2593,7 +2723,7 @@ function drawAvatar(p, isMe, connected) {
   const r = AVATAR_R;
   // [試作] ドット絵スプライトに差し替え（?spritetest 時、全員に適用）。
   // 足元(=グローの中心)の高さがアイコンとスプライトで違うため、描画前に判定しておく。
-  const willDrawSprite = SPRITE_TEST && !!getSpriteCharacterCanvas(p.spriteCharacterId);
+  const willDrawSprite = SPRITE_TEST && !!getPlayerSpriteCanvas(p);
   const feetY = willDrawSprite ? p.y + SPRITE_FEET_OFFSET : p.y;
   // グローの中心は実測の足先位置（セル下端の余白ぶん上げる）に合わせる
   const glowY = willDrawSprite ? feetY - SPRITE_FEET_VISUAL_INSET : feetY;
@@ -4029,9 +4159,11 @@ function applyProfileToMe(p) {
   me.iconType = p.iconType === "upload" ? "upload" : "preset";
   me.iconId = p.iconId || "";
   me.iconUrl = p.iconUrl || "";
-  me.spriteCharacterId = spriteCharacterById(p.spriteCharacterId)
-    ? p.spriteCharacterId
-    : DEFAULT_SPRITE_CHARACTER_ID;
+  me.spriteCharacterId =
+    p.spriteCharacterId === CUSTOM_SPRITE_ID || spriteCharacterById(p.spriteCharacterId)
+      ? p.spriteCharacterId
+      : DEFAULT_SPRITE_CHARACTER_ID;
+  me.spriteParts = sanitizeSpriteParts(p.spriteParts);
 }
 
 // サインイン直後に呼ぶ。クラウドと端末の控えの「新しい方」を採用する。
@@ -4063,6 +4195,7 @@ async function loadUserProfile(user) {
       iconId: defaultPresetIdFor(user.uid),
       iconUrl: "",
       spriteCharacterId: DEFAULT_SPRITE_CHARACTER_ID,
+      spriteParts: defaultPartsForCharacter(DEFAULT_SPRITE_CHARACTER_ID),
       updatedAt: Date.now(),
     };
   }
@@ -4089,6 +4222,7 @@ function saveProfile() {
     iconId: me.iconId || "",
     iconUrl: me.iconUrl || "",
     spriteCharacterId: me.spriteCharacterId || DEFAULT_SPRITE_CHARACTER_ID,
+    spriteParts: me.spriteParts || defaultPartsForCharacter(DEFAULT_SPRITE_CHARACTER_ID),
     updatedAt: Date.now(),
   };
   // まず端末ローカルに控える（クラウド書き込みが失敗しても保持される）
@@ -4106,6 +4240,7 @@ function saveProfile() {
       iconId: data.iconId,
       iconUrl: data.iconUrl,
       spriteCharacterId: data.spriteCharacterId,
+      spriteParts: data.spriteParts,
     }).catch(() => {});
   }
   // 自分の映像タイルの名前も更新
@@ -4215,22 +4350,11 @@ function renderConsolePreview() {
       me.iconType === "preset" && it.dataset.id === me.iconId
     );
   });
-  // マイアバターのプレビュー（大きい1体表示）
+  // マイアバターのプレビュー（大きい1体表示）と、開いていればアバター編集画面のプレビューも更新
   const myavatarCanvas = document.getElementById("myavatar-canvas");
-  if (myavatarCanvas) drawCharacterThumbnail(myavatarCanvas, me.spriteCharacterId || DEFAULT_SPRITE_CHARACTER_ID);
-  renderAvatarEditorSelection();
-}
-
-// アバター編集画面（プリセットグリッド）の選択状態とプレビューを更新
-function renderAvatarEditorSelection() {
-  document.querySelectorAll("#avatar-editor-grid .character-item").forEach((it) => {
-    it.classList.toggle(
-      "selected",
-      it.dataset.id === (me.spriteCharacterId || DEFAULT_SPRITE_CHARACTER_ID)
-    );
-  });
+  if (myavatarCanvas) drawSpriteSheetThumbnail(myavatarCanvas, () => getPlayerSpriteCanvas(me));
   const editorCanvas = document.getElementById("avatar-editor-canvas");
-  if (editorCanvas) drawCharacterThumbnail(editorCanvas, me.spriteCharacterId || DEFAULT_SPRITE_CHARACTER_ID);
+  if (editorCanvas) drawSpriteSheetThumbnail(editorCanvas, () => getPlayerSpriteCanvas(me));
 }
 
 let consoleBuilt = false;
@@ -4255,12 +4379,13 @@ function buildPresetGrid() {
   }
 }
 
-// キャラクターの向き=下・1コマ目のサムネイルを描く。合成が未完了ならしばらくリトライする。
-function drawCharacterThumbnail(canvasEl, characterId, attemptsLeft = 30) {
-  const sheet = getSpriteCharacterCanvas(characterId);
+// 64x64セル(向き=下・1コマ目)のサムネイルを描く。getSheet() が合成完了前でnullを返す間は
+// リトライする（loadSpriteCharacter系は非同期で画像を読み込むため）。
+function drawSpriteSheetThumbnail(canvasEl, getSheet, attemptsLeft = 30) {
+  const sheet = getSheet();
   const cctx = canvasEl.getContext("2d");
   if (!sheet) {
-    if (attemptsLeft > 0) setTimeout(() => drawCharacterThumbnail(canvasEl, characterId, attemptsLeft - 1), 150);
+    if (attemptsLeft > 0) setTimeout(() => drawSpriteSheetThumbnail(canvasEl, getSheet, attemptsLeft - 1), 150);
     return;
   }
   cctx.imageSmoothingEnabled = false;
@@ -4269,40 +4394,140 @@ function drawCharacterThumbnail(canvasEl, characterId, attemptsLeft = 30) {
   cctx.drawImage(sheet, 0, row * SPRITE_CELL, SPRITE_CELL, SPRITE_CELL, 0, 0, canvasEl.width, canvasEl.height);
 }
 
-function buildCharacterGrid() {
-  const grid = document.getElementById("avatar-editor-grid");
-  if (!grid || grid.childElementCount) return;
-  for (const c of SPRITE_CHARACTERS) {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "character-item";
-    item.dataset.id = c.id;
-    item.title = c.label;
-
-    const canvasEl = document.createElement("canvas");
-    canvasEl.width = 48;
-    canvasEl.height = 48;
-    item.appendChild(canvasEl);
-    loadSpriteCharacter(c.id); // 合成を開始
-    drawCharacterThumbnail(canvasEl, c.id);
-
-    const labelEl = document.createElement("span");
-    labelEl.textContent = c.label;
-    item.appendChild(labelEl);
-
-    item.addEventListener("click", () => {
-      me.spriteCharacterId = c.id;
-      renderConsolePreview();
-    });
-    grid.appendChild(item);
-  }
+function drawCharacterThumbnail(canvasEl, characterId) {
+  drawSpriteSheetThumbnail(canvasEl, () => getSpriteCharacterCanvas(characterId));
 }
 
-// マイアバターをタップ → プロフィール設定パネルの子画面としてアバター編集画面を開く
+// パーツ単体（1レイヤーのみ）のスウォッチ用サムネイル。合成不要でそのまま1枚読み込む。
+function drawPartSwatchThumbnail(canvasEl, filePath) {
+  const cctx = canvasEl.getContext("2d");
+  const img = new Image();
+  img.onload = () => {
+    if (!img.naturalWidth) return;
+    cctx.imageSmoothingEnabled = false;
+    cctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+    const row = SPRITE_ROW_BY_FACING.down;
+    cctx.drawImage(img, 0, row * SPRITE_CELL, SPRITE_CELL, SPRITE_CELL, 0, 0, canvasEl.width, canvasEl.height);
+  };
+  img.src = encodeAssetPath(SPRITE_PARTS_BASE + filePath);
+}
+
+// アバター編集画面：現在アクティブなタブ（プリセット / 体型 / 髪型 / トップス / ボトムス / 靴 / アクセサリー）
+let activeEditorTab = "preset";
+
+function setActiveEditorTab(tabId) {
+  activeEditorTab = tabId;
+  document.querySelectorAll("#avatar-editor-tabs .cat-tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === tabId);
+  });
+  renderAvatarEditorGrid();
+}
+
+// 汎用スウォッチ生成ヘルパー
+function appendEditorSwatch(grid, { id, label, selected, thumbnail, onClick }) {
+  const item = document.createElement("button");
+  item.type = "button";
+  item.className = "character-item" + (selected ? " selected" : "");
+  item.dataset.id = id;
+  item.title = label;
+  const canvasEl = document.createElement("canvas");
+  canvasEl.width = 48;
+  canvasEl.height = 48;
+  item.appendChild(canvasEl);
+  thumbnail(canvasEl);
+  const labelEl = document.createElement("span");
+  labelEl.textContent = label;
+  item.appendChild(labelEl);
+  item.addEventListener("click", onClick);
+  grid.appendChild(item);
+}
+
+// アクティブなタブの内容にあわせてスウォッチグリッドを再構築する
+function renderAvatarEditorGrid() {
+  const grid = document.getElementById("avatar-editor-grid");
+  const emptyNote = document.getElementById("avatar-editor-empty-note");
+  if (!grid) return;
+  grid.innerHTML = "";
+  if (emptyNote) emptyNote.hidden = true;
+
+  if (activeEditorTab === "preset") {
+    for (const c of SPRITE_CHARACTERS) {
+      loadSpriteCharacter(c.id); // 合成を開始
+      appendEditorSwatch(grid, {
+        id: c.id,
+        label: c.label,
+        selected: me.spriteCharacterId === c.id,
+        thumbnail: (canvasEl) => drawCharacterThumbnail(canvasEl, c.id),
+        onClick: () => {
+          me.spriteCharacterId = c.id;
+          me.spriteParts = defaultPartsForCharacter(c.id);
+          renderConsolePreview();
+          renderAvatarEditorGrid();
+        },
+      });
+    }
+    return;
+  }
+
+  if (activeEditorTab === "body") {
+    for (const opt of BODY_TYPE_OPTIONS) {
+      appendEditorSwatch(grid, {
+        id: opt.id,
+        label: opt.label,
+        selected: me.spriteParts.bodyType === opt.id,
+        thumbnail: (canvasEl) => drawSpriteSheetThumbnail(canvasEl, () => getCustomSpriteCanvas({ bodyType: opt.id })),
+        onClick: () => {
+          me.spriteCharacterId = CUSTOM_SPRITE_ID;
+          me.spriteParts = { ...BODY_TYPE_DEFAULT_PARTS[opt.id] };
+          renderConsolePreview();
+          renderAvatarEditorGrid();
+        },
+      });
+    }
+    return;
+  }
+
+  // hair / tops / bottoms / shoes / accessories
+  const category = activeEditorTab;
+  const items = partsByCategory(category).filter(
+    (part) => !part.bodyType || part.bodyType === me.spriteParts.bodyType
+  );
+  if (PART_CATEGORY_ALLOW_NONE[category]) {
+    appendEditorSwatch(grid, {
+      id: "__none__",
+      label: "なし",
+      selected: !me.spriteParts[category],
+      thumbnail: (canvasEl) => canvasEl.getContext("2d").clearRect(0, 0, canvasEl.width, canvasEl.height),
+      onClick: () => {
+        me.spriteCharacterId = CUSTOM_SPRITE_ID;
+        me.spriteParts = { ...me.spriteParts, [category]: null };
+        renderConsolePreview();
+        renderAvatarEditorGrid();
+      },
+    });
+  }
+  for (const part of items) {
+    appendEditorSwatch(grid, {
+      id: part.id,
+      label: part.label,
+      selected: me.spriteParts[category] === part.id,
+      thumbnail: (canvasEl) => drawPartSwatchThumbnail(canvasEl, part.file),
+      onClick: () => {
+        me.spriteCharacterId = CUSTOM_SPRITE_ID;
+        me.spriteParts = { ...me.spriteParts, [category]: part.id };
+        renderConsolePreview();
+        renderAvatarEditorGrid();
+      },
+    });
+  }
+  if (emptyNote) emptyNote.hidden = items.length > 0;
+}
+
 // マイアバターをタップ → 中央ポップアップでアバター編集画面を開く（プロフィール設定は背後にそのまま残す）
 function openAvatarEditor() {
-  buildCharacterGrid();
-  renderAvatarEditorSelection();
+  setActiveEditorTab("preset");
+  const editorCanvas = document.getElementById("avatar-editor-canvas");
+  if (editorCanvas) drawSpriteSheetThumbnail(editorCanvas, () => getPlayerSpriteCanvas(me));
   const panel = document.getElementById("avatar-editor");
   panel.hidden = false;
   panel.classList.add("closing"); // いったん透明・縮小状態から
@@ -4383,6 +4608,9 @@ function setupConsole() {
     avatarEditorPanel.addEventListener("click", (e) => {
       if (e.target === avatarEditorPanel) closeAvatarEditorToConsole();
     });
+  document.querySelectorAll("#avatar-editor-tabs .cat-tab").forEach((btn) => {
+    btn.addEventListener("click", () => setActiveEditorTab(btn.dataset.tab));
+  });
 
   if (uploadBtn) uploadBtn.addEventListener("click", () => fileInput.click());
   if (fileInput)

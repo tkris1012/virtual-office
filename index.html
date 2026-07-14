@@ -314,8 +314,17 @@
         <div class="avatar-editor-stage">
           <canvas id="avatar-editor-canvas" width="160" height="160"></canvas>
         </div>
-        <div class="console-section-title">プリセット</div>
+        <div class="cat-tabs" id="avatar-editor-tabs">
+          <button class="cat-tab" type="button" data-tab="preset"><span class="dot">🧑‍🤝‍🧑</span><span class="label">プリセット</span></button>
+          <button class="cat-tab" type="button" data-tab="body"><span class="dot">🧍</span><span class="label">体型</span></button>
+          <button class="cat-tab" type="button" data-tab="hair"><span class="dot">💇</span><span class="label">髪型</span></button>
+          <button class="cat-tab" type="button" data-tab="tops"><span class="dot">👕</span><span class="label">トップス</span></button>
+          <button class="cat-tab" type="button" data-tab="bottoms"><span class="dot">👖</span><span class="label">ボトムス</span></button>
+          <button class="cat-tab" type="button" data-tab="shoes"><span class="dot">👟</span><span class="label">靴</span></button>
+          <button class="cat-tab" type="button" data-tab="accessories"><span class="dot">🎩</span><span class="label">アクセ</span></button>
+        </div>
         <div id="avatar-editor-grid" class="character-grid"></div>
+        <div id="avatar-editor-empty-note" class="hint" hidden>このカテゴリのアイテムはまだありません</div>
       </div>
     </div>
   </div>
