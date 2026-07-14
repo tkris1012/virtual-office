@@ -22,18 +22,19 @@ jobs:
       - name: JavaScript の構文チェック（node --check）
         run: |
           set -e
-          for f in $(git ls-files '*.js'); do
+          # ファイル名にUnicode/スペースを含む場合でも壊れないよう、NUL区切りで列挙する
+          while IFS= read -r -d '' f; do
             echo "checking $f"
             node --check "$f"
-          done
+          done < <(git ls-files -z '*.js')
 
       - name: JSON の妥当性チェック（database.rules.json など）
         run: |
           set -e
-          for f in $(git ls-files '*.json'); do
+          while IFS= read -r -d '' f; do
             echo "checking $f"
-            node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))"
-          done
+            node -e "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))" "$f"
+          done < <(git ls-files -z '*.json')
 
       - name: セキュリティ重要ファイルの変更を警告（PR時のみ）
         if: github.event_name == 'pull_request'
