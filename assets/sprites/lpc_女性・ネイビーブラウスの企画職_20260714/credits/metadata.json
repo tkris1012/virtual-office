@@ -1,0 +1,159 @@
+{
+  "exportTimestamp": "2026-07-14T02-17-54",
+  "bodyType": "female",
+  "standardAnimations": {
+    "exported": {
+      "spellcast": [
+        "010 body_color__light_.png",
+        "120 bob__dark_brown_.png",
+        "035 longsleeve_blouse__navy_.png",
+        "020 straight_skirt__charcoal_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_female_small__light_.png"
+      ],
+      "thrust": [
+        "010 body_color__light_.png",
+        "120 bob__dark_brown_.png",
+        "035 longsleeve_blouse__navy_.png",
+        "020 straight_skirt__charcoal_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_female_small__light_.png"
+      ],
+      "walk": [
+        "010 body_color__light_.png",
+        "120 bob__dark_brown_.png",
+        "035 longsleeve_blouse__navy_.png",
+        "020 straight_skirt__charcoal_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_female_small__light_.png"
+      ],
+      "slash": [
+        "010 body_color__light_.png",
+        "120 bob__dark_brown_.png",
+        "035 longsleeve_blouse__navy_.png",
+        "020 straight_skirt__charcoal_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_female_small__light_.png"
+      ],
+      "shoot": [
+        "010 body_color__light_.png",
+        "120 bob__dark_brown_.png",
+        "035 longsleeve_blouse__navy_.png",
+        "020 straight_skirt__charcoal_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_female_small__light_.png"
+      ],
+      "hurt": [
+        "010 body_color__light_.png",
+        "120 bob__dark_brown_.png",
+        "035 longsleeve_blouse__navy_.png",
+        "020 straight_skirt__charcoal_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_female_small__light_.png"
+      ],
+      "climb": [
+        "010 body_color__light_.png",
+        "120 bob__dark_brown_.png",
+        "020 straight_skirt__charcoal_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_female_small__light_.png"
+      ],
+      "idle": [
+        "010 body_color__light_.png",
+        "120 bob__dark_brown_.png",
+        "020 straight_skirt__charcoal_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_female_small__light_.png"
+      ],
+      "jump": [
+        "010 body_color__light_.png",
+        "120 bob__dark_brown_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_female_small__light_.png"
+      ],
+      "sit": [
+        "010 body_color__light_.png",
+        "120 bob__dark_brown_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_female_small__light_.png"
+      ],
+      "emote": [
+        "010 body_color__light_.png",
+        "120 bob__dark_brown_.png",
+        "020 straight_skirt__charcoal_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_female_small__light_.png"
+      ],
+      "run": [
+        "010 body_color__light_.png",
+        "120 bob__dark_brown_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_female_small__light_.png"
+      ],
+      "combat": [
+        "010 body_color__light_.png",
+        "120 bob__dark_brown_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_female_small__light_.png"
+      ],
+      "1h_backslash": [
+        "010 body_color__light_.png",
+        "120 bob__dark_brown_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_female_small__light_.png"
+      ],
+      "1h_halfslash": [
+        "010 body_color__light_.png",
+        "120 bob__dark_brown_.png",
+        "015 basic_shoes__black_.png",
+        "100 human_female_small__light_.png"
+      ]
+    },
+    "failed": {
+      "spellcast": [],
+      "thrust": [],
+      "walk": [],
+      "slash": [],
+      "shoot": [],
+      "hurt": [],
+      "climb": [],
+      "idle": [],
+      "jump": [],
+      "sit": [],
+      "emote": [],
+      "run": [],
+      "combat": [],
+      "1h_backslash": [],
+      "1h_halfslash": []
+    }
+  },
+  "customAnimations": {
+    "exported": {},
+    "failed": {}
+  },
+  "frameSize": 64,
+  "frameCounts": {},
+  "performance": {
+    "exportKind": "splitItemAnimations",
+    "totalMs": 1678.5,
+    "phasesMs": {
+      "render_imageLoadDecode_renderSingleItemAnimation": 0.7,
+      "render_composite_renderSingleItemAnimation": 6.6,
+      "pngEncode": 1622.7,
+      "zipFile": 10.9,
+      "staticFiles": 0.8
+    },
+    "counters": {
+      "pngEncodeCount": 75,
+      "totalPngBytes": 817938,
+      "drawAndSliceCount": 0,
+      "zipFileEntryCount": 75,
+      "renderExtractAnimationFromCanvasCalls": 0,
+      "renderSingleItemCalls": 0,
+      "renderSingleItemAnimationCalls": 75,
+      "extractFramesFromAnimationBatchCount": 0,
+      "renderSliceCanvasForCustomAnimCalls": 0
+    },
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+  }
+}
