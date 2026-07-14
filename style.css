@@ -1035,8 +1035,8 @@ body.game-open #joystick {
 .avatar-editor-card {
   width: 100%;
   max-width: 420px;
-  max-height: calc(100dvh - 40px);
-  overflow-y: auto;
+  /* アイテム数でポップアップの高さが変わらないよう固定（中身は #avatar-editor-grid 側でスクロール） */
+  height: min(620px, calc(100dvh - 40px));
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1050,6 +1050,7 @@ body.game-open #joystick {
 }
 #avatar-editor.closing .avatar-editor-card { transform: scale(0.94); }
 .avatar-editor-head {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1057,9 +1058,24 @@ body.game-open #joystick {
   font-weight: 700;
 }
 .avatar-editor-body {
+  flex: 1;
+  min-height: 0; /* flex子要素がcontentサイズで溢れず、内側のグリッドがスクロールできるようにする */
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+.avatar-editor-body > .avatar-editor-stage,
+.avatar-editor-body > .cat-tabs {
+  flex: 0 0 auto;
+}
+#avatar-editor-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: flex-start;
+}
+#avatar-editor-empty-note {
+  flex: 0 0 auto;
 }
 .avatar-editor-stage {
   display: flex;
