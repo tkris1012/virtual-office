@@ -1401,6 +1401,11 @@ function setupControls(media) {
         showLeaveConfirmDialog();
         return;
       }
+      if (shortcutKey === "p") {
+        event.preventDefault();
+        openConsole();
+        return;
+      }
     }
     if (
       !stampPopover.hidden &&
