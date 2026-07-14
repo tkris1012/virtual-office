@@ -90,6 +90,21 @@ const OUTER_EDGE_RETURN_GATE = Object.freeze({
   h: H * 0.19,
 });
 const OUTER_EDGE_COMING_SOON_RANGE = 54;
+const OUTER_EDGE_CRYSTAL_RANGE = 54;
+const CRYSTAL_RECOVERY_INTERVAL_MS = 8 * 60 * 60 * 1000;
+const GAME_STATE_STORAGE_KEY = "virtual-office.game-state";
+const CRYSTAL_SHARD_ITEM_ID = "crystal-shard";
+const IMPORTANT_ITEMS = Object.freeze({
+  [CRYSTAL_SHARD_ITEM_ID]: {
+    name: "水晶のかけら",
+    icon: "assets/items/crystal-shard.png",
+  },
+});
+const OUTER_EDGE_CRYSTALS = Object.freeze([
+  { id: "outer-gate-crystal-1", x: W * 0.25, y: H * 0.46 },
+  { id: "outer-gate-crystal-2", x: W * 0.5, y: H * 0.53 },
+  { id: "outer-gate-crystal-3", x: W * 0.72, y: H * 0.34 },
+]);
 const OUTER_EDGE_COMING_SOON_SPOTS = Object.freeze([
   {
     id: "left-stone-device",
@@ -104,27 +119,6 @@ const OUTER_EDGE_COMING_SOON_SPOTS = Object.freeze([
     y: H * 0.48,
     title: "COMING SOON",
     message: "ベンチのようなものがある。ひと休みできそうだが、まだ何もできなそうだ。",
-  },
-  {
-    id: "left-crystal",
-    x: W * 0.25,
-    y: H * 0.46,
-    title: "COMING SOON",
-    message: "水晶のようなものがある。まだ何もできなそうだ。（今後機能追加で使えるようになります。）",
-  },
-  {
-    id: "center-crystal",
-    x: W * 0.5,
-    y: H * 0.53,
-    title: "COMING SOON",
-    message: "水晶のようなものがある。淡く反応しているが、まだ何もできなそうだ。",
-  },
-  {
-    id: "right-crystal",
-    x: W * 0.72,
-    y: H * 0.34,
-    title: "COMING SOON",
-    message: "水晶のようなものがある。何かを記録していそうだが、まだ何もできなそうだ。",
   },
   {
     id: "lower-left-dock",
@@ -148,6 +142,133 @@ const OUTER_EDGE_COMING_SOON_SPOTS = Object.freeze([
     message: "石像のような門柱がある。奥に進めそうだが、まだ何もできなそうだ。",
   },
 ]);
+
+function createInitialGameState() {
+  const now = Date.now();
+  return {
+    version: 1,
+    inventory: {},
+    worldObjects: Object.fromEntries(
+      OUTER_EDGE_CRYSTALS.map((crystal) => [
+        crystal.id,
+        {
+          type: "collectible",
+          state: "available",
+          itemId: CRYSTAL_SHARD_ITEM_ID,
+          amount: 1,
+          lastCollectedAt: null,
+          activatedAt: now,
+          updatedAt: now,
+        },
+      ])
+    ),
+    crystalRecovery: { lastCollectionAt: null, restoredCount: 0, updatedAt: now },
+  };
+}
+
+function loadGameState() {
+  const initialState = createInitialGameState();
+  try {
+    const raw = localStorage.getItem(GAME_STATE_STORAGE_KEY);
+    if (!raw) return initialState;
+    const saved = JSON.parse(raw);
+    if (!saved || saved.version !== 1 || typeof saved !== "object") return initialState;
+    const inventory = saved.inventory && typeof saved.inventory === "object" ? saved.inventory : {};
+    const worldObjects = saved.worldObjects && typeof saved.worldObjects === "object" ? saved.worldObjects : {};
+    for (const crystal of OUTER_EDGE_CRYSTALS) {
+      const fallback = initialState.worldObjects[crystal.id];
+      const record = worldObjects[crystal.id];
+      worldObjects[crystal.id] = {
+        ...fallback,
+        ...(record && typeof record === "object" ? record : {}),
+        type: "collectible",
+        itemId: CRYSTAL_SHARD_ITEM_ID,
+        amount: 1,
+        state: record && record.state === "collected" ? "collected" : "available",
+      };
+    }
+    return {
+      ...initialState,
+      ...saved,
+      inventory,
+      worldObjects,
+      crystalRecovery: {
+        ...initialState.crystalRecovery,
+        ...(saved.crystalRecovery && typeof saved.crystalRecovery === "object" ? saved.crystalRecovery : {}),
+      },
+    };
+  } catch (error) {
+    console.warn("ゲーム状態を読み込めなかったため初期化します", error);
+    return initialState;
+  }
+}
+
+let worldState = loadGameState();
+let lastCrystalRecoveryCheckAt = 0;
+
+function saveGameState() {
+  try {
+    localStorage.setItem(GAME_STATE_STORAGE_KEY, JSON.stringify(worldState));
+  } catch (error) {
+    console.warn("ゲーム状態を保存できませんでした", error);
+  }
+}
+
+function inventoryQuantity(itemId) {
+  const quantity = Number(worldState.inventory[itemId]?.quantity || 0);
+  return Number.isSafeInteger(quantity) && quantity > 0 ? quantity : 0;
+}
+
+function addInventoryItem(itemId, amount, now = Date.now()) {
+  worldState.inventory[itemId] = { quantity: inventoryQuantity(itemId) + amount, updatedAt: now };
+}
+
+function crystalRecord(crystalId) {
+  return worldState.worldObjects[crystalId];
+}
+
+function restoreEligibleCrystals(now = Date.now()) {
+  const recovery = worldState.crystalRecovery;
+  if (!Number.isFinite(recovery.lastCollectionAt)) return false;
+  const shouldRestore = Math.min(
+    OUTER_EDGE_CRYSTALS.length,
+    Math.floor((now - recovery.lastCollectionAt) / CRYSTAL_RECOVERY_INTERVAL_MS)
+  );
+  const restoredCount = Math.max(0, Math.min(OUTER_EDGE_CRYSTALS.length, Number(recovery.restoredCount) || 0));
+  const additional = Math.max(0, shouldRestore - restoredCount);
+  if (!additional) return false;
+
+  const candidates = OUTER_EDGE_CRYSTALS.filter((crystal) => crystalRecord(crystal.id)?.state === "collected");
+  for (let i = 0; i < additional && candidates.length; i++) {
+    const index = Math.floor(Math.random() * candidates.length);
+    const [crystal] = candidates.splice(index, 1);
+    const record = crystalRecord(crystal.id);
+    record.state = "available";
+    record.activatedAt = now;
+    record.updatedAt = now;
+  }
+  recovery.restoredCount = Math.min(OUTER_EDGE_CRYSTALS.length, restoredCount + additional);
+  recovery.updatedAt = now;
+  saveGameState();
+  updateImportantItemsHud();
+  return true;
+}
+
+function collectCrystal(crystal) {
+  const record = crystalRecord(crystal.id);
+  if (!record || record.state !== "available") return false;
+  const now = Date.now();
+  record.state = "collected";
+  record.lastCollectedAt = now;
+  record.updatedAt = now;
+  addInventoryItem(record.itemId, record.amount, now);
+  worldState.crystalRecovery = { lastCollectionAt: now, restoredCount: 0, updatedAt: now };
+  saveGameState();
+  updateImportantItemsHud();
+  updateOuterEdgeCrystalPrompt();
+  toast("水晶のかけらを1個取得しました");
+  return true;
+}
 let currentArea = AREAS.OFFICE;
 let officeReturnPosition = { x: W * 0.475, y: H * 0.9 };
 let extensionReturnPosition = { x: W * 0.545, y: H * 0.24 };
@@ -2620,6 +2741,30 @@ function drawZones() {
   }
 }
 
+function drawOuterEdgeCrystalEffects(now) {
+  if (currentArea !== AREAS.OUTER_EDGE) return;
+
+  for (const crystal of OUTER_EDGE_CRYSTALS) {
+    if (crystalRecord(crystal.id)?.state !== "available") continue;
+    const pulse = 0.5 + 0.5 * Math.sin(now / 560 + crystal.x);
+    const radius = 22 + pulse * 10;
+    const glow = ctx.createRadialGradient(crystal.x, crystal.y, 2, crystal.x, crystal.y, radius);
+    glow.addColorStop(0, `rgba(194, 255, 255, ${0.28 + pulse * 0.16})`);
+    glow.addColorStop(0.45, `rgba(78, 220, 255, ${0.14 + pulse * 0.1})`);
+    glow.addColorStop(1, "rgba(78, 220, 255, 0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.ellipse(crystal.x, crystal.y + 3, radius, radius * 0.58, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = `rgba(185, 255, 255, ${0.32 + pulse * 0.28})`;
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.arc(crystal.x, crystal.y, 16 + pulse * 5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
 function render() {
   const now = performance.now();
   // 画面クリア（スクリーン座標）
@@ -2632,6 +2777,7 @@ function render() {
   ctx.setTransform(s, 0, 0, s, canvas.width / 2 - camera.x * s, canvas.height / 2 - camera.y * s);
 
   drawFloor();
+  drawOuterEdgeCrystalEffects(now);
   if (currentArea === AREAS.OFFICE) {
     drawZones();
     if (virtualQuestGate) virtualQuestGate.draw(ctx, now);
@@ -2957,6 +3103,12 @@ function setupVirtualQuestGate() {
 }
 
 function setupVirtualQuestStageControls() {
+  const importantItems = document.createElement("aside");
+  importantItems.id = "important-items-hud";
+  importantItems.setAttribute("aria-label", "重要アイテム");
+  document.body.appendChild(importantItems);
+  updateImportantItemsHud();
+
   const participantsPanel = document.createElement("div");
   participantsPanel.id = "virtual-quest-area-participants";
   participantsPanel.hidden = true;
@@ -2988,6 +3140,23 @@ function setupVirtualQuestStageControls() {
   comingSoonPanel.appendChild(comingSoonMessage);
   document.body.appendChild(comingSoonPanel);
 
+  const crystalPrompt = document.createElement("div");
+  crystalPrompt.id = "outer-edge-crystal-prompt";
+  crystalPrompt.hidden = true;
+  crystalPrompt.innerHTML = `
+    <div class="virtual-quest-prompt-copy">
+      <strong>水晶</strong>
+      <span>水晶のかけらを取得できます</span>
+    </div>
+    <span class="virtual-quest-prompt-key">F</span>
+    <button type="button">取得する</button>
+  `;
+  crystalPrompt.querySelector("button").addEventListener("click", () => {
+    const crystal = nearestAvailableOuterEdgeCrystal();
+    if (crystal) collectCrystal(crystal);
+  });
+  document.body.appendChild(crystalPrompt);
+
   const returnButton = document.createElement("button");
   returnButton.id = "virtual-quest-return";
   returnButton.type = "button";
@@ -3010,16 +3179,46 @@ function setupVirtualQuestStageControls() {
     }
     if (
       event.key.toLowerCase() === "f" &&
-      isPlayerInOuterEdgeReturnGate() &&
       !event.repeat &&
       !event.isComposing &&
       !isEditableTarget(event.target) &&
       !isBlockingOverlayOpen()
     ) {
-      event.preventDefault();
-      returnToOfficeArea();
+      const crystal = nearestAvailableOuterEdgeCrystal();
+      if (crystal) {
+        event.preventDefault();
+        collectCrystal(crystal);
+        return;
+      }
+      if (isPlayerInOuterEdgeReturnGate()) {
+        event.preventDefault();
+        returnToOfficeArea();
+      }
     }
   });
+}
+
+function updateImportantItemsHud() {
+  const hud = document.getElementById("important-items-hud");
+  if (!hud) return;
+  hud.replaceChildren();
+  for (const [itemId, item] of Object.entries(IMPORTANT_ITEMS)) {
+    const row = document.createElement("div");
+    row.className = "important-item";
+    const icon = document.createElement("img");
+    icon.src = item.icon;
+    icon.width = 32;
+    icon.height = 32;
+    icon.alt = "";
+    const label = document.createElement("span");
+    label.className = "important-item-name";
+    label.textContent = item.name;
+    const quantity = document.createElement("strong");
+    quantity.className = "important-item-quantity";
+    quantity.textContent = `×${inventoryQuantity(itemId)}`;
+    row.append(icon, label, quantity);
+    hud.appendChild(row);
+  }
 }
 
 function isPlayerInOuterEdgeReturnGate() {
@@ -3045,6 +3244,8 @@ function enterOuterEdgeArea() {
   if (returnButton) returnButton.hidden = false;
   restorePresence();
   updateOnlineStatus();
+  restoreEligibleCrystals();
+  updateOuterEdgeCrystalPrompt();
   updateVirtualQuestComingSoon();
   updateVirtualQuestReturnPrompt();
   updateOfficeExtensionPrompts();
@@ -3064,6 +3265,7 @@ function returnToOfficeArea() {
   if (returnButton) returnButton.hidden = true;
   restorePresence();
   updateOnlineStatus();
+  updateOuterEdgeCrystalPrompt();
   updateVirtualQuestComingSoon();
   updateVirtualQuestReturnPrompt();
   updateOfficeExtensionPrompts();
@@ -3081,6 +3283,27 @@ function nearestOuterEdgeComingSoonSpot() {
     }
   }
   return nearestDistance <= OUTER_EDGE_COMING_SOON_RANGE ? nearest : null;
+}
+
+function nearestAvailableOuterEdgeCrystal() {
+  if (currentArea !== AREAS.OUTER_EDGE) return null;
+  let nearest = null;
+  let nearestDistance = Infinity;
+  for (const crystal of OUTER_EDGE_CRYSTALS) {
+    if (crystalRecord(crystal.id)?.state !== "available") continue;
+    const distance = Math.hypot(me.x - crystal.x, me.y - crystal.y);
+    if (distance < nearestDistance) {
+      nearest = crystal;
+      nearestDistance = distance;
+    }
+  }
+  return nearestDistance <= OUTER_EDGE_CRYSTAL_RANGE ? nearest : null;
+}
+
+function updateOuterEdgeCrystalPrompt() {
+  const prompt = document.getElementById("outer-edge-crystal-prompt");
+  if (!prompt) return;
+  prompt.hidden = !nearestAvailableOuterEdgeCrystal() || isBlockingOverlayOpen();
 }
 
 function updateVirtualQuestComingSoon() {
@@ -3379,6 +3602,11 @@ canvas.addEventListener("pointercancel", () => {
 
 function loop(now) {
   const t = now || performance.now();
+  const wallClockNow = Date.now();
+  if (wallClockNow - lastCrystalRecoveryCheckAt >= 60_000) {
+    lastCrystalRecoveryCheckAt = wallClockNow;
+    restoreEligibleCrystals(wallClockNow);
+  }
   step();
   if (SPRITE_TEST) {
     updateSpriteAnimation(me, t);
@@ -3390,6 +3618,7 @@ function loop(now) {
   updateGameArea(t);
   if (virtualQuestGate && currentArea === AREAS.OFFICE) virtualQuestGate.update(t);
   updateVirtualQuestComingSoon();
+  updateOuterEdgeCrystalPrompt();
   updateVirtualQuestReturnPrompt();
   updateOfficeExtensionPrompts();
   flushPosition(t);

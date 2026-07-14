@@ -352,7 +352,7 @@ body.virtual-quest-open #joystick {
 
 #virtual-quest-return {
   position: fixed;
-  top: 16px;
+  top: 70px;
   right: 16px;
   z-index: 36;
   display: inline-flex;
@@ -375,6 +375,79 @@ body.virtual-quest-open #joystick {
   font-size: 18px;
 }
 
+#important-items-hud {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 36;
+  display: grid;
+  gap: 6px;
+  min-width: 154px;
+  padding: 7px;
+  color: #efffff;
+  background: rgba(10, 28, 36, 0.92);
+  border: 1px solid rgba(101, 230, 241, 0.5);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.important-item {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+}
+.important-item img {
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+}
+.important-item-name {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.important-item-quantity {
+  color: #9df8ff;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+#outer-edge-crystal-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: 92px;
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(520px, calc(100vw - 24px));
+  padding: 12px 14px;
+  color: #eefeff;
+  background: rgba(7, 30, 43, 0.94);
+  border: 1px solid rgba(103, 233, 255, 0.72);
+  border-radius: 12px;
+  box-shadow: 0 0 24px rgba(70, 220, 255, 0.28), 0 12px 32px rgba(0, 0, 0, 0.38);
+  transform: translateX(-50%);
+}
+#outer-edge-crystal-prompt[hidden] { display: none; }
+#outer-edge-crystal-prompt button {
+  margin-left: auto;
+  padding: 7px 10px;
+  color: #06202b;
+  background: #9cf5ff;
+  border: 0;
+  border-radius: 7px;
+  font-weight: 800;
+  cursor: pointer;
+}
+#outer-edge-crystal-prompt button:hover { background: #d2fcff; }
+#outer-edge-crystal-prompt button:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.95);
+  outline-offset: 2px;
+}
+
 @media (max-width: 600px) {
   #virtual-quest-prompt,
   #virtual-quest-return-prompt,
@@ -383,6 +456,15 @@ body.virtual-quest-open #joystick {
     bottom: 82px;
   }
   .virtual-quest-prompt-key { display: none; }
+  #important-items-hud {
+    top: 10px;
+    right: 10px;
+    min-width: 136px;
+  }
+  #virtual-quest-return {
+    top: 60px;
+    right: 10px;
+  }
   #virtual-quest-gate-modal {
     padding: 96px 10px 10px;
   }
