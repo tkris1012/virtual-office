@@ -1,0 +1,46 @@
+assets/sprites/parts/ に直接追加したパーツ（特定のキャラクターフォルダに属さないもの）のクレジット。
+
+いずれも Universal LPC Spritesheet Generator（
+https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator ）
+の素材を元にしています。元々の色から本アプリ用に色だけを変更（パレット置換）した
+ものには「色変更」と記載しています。
+
+---
+
+hair/spiked__gold_.png
+  元ファイル: hair/spiked/adult/walk.png
+  作者: kcilds / Rocetti / Eredah
+  ライセンス: CC-BY 4.0
+  URL: https://opengameart.org/content/eredah-rpg-character-base-48x64-ongoing,
+       https://opengameart.org/content/lpc-hair
+  備考: 元は赤系の配色。ゴールドに色変更（陰影構造は維持）。
+
+tops/undershirt_longsleeve__blue_.png
+  元ファイル: torso/clothes/longsleeve/formal/male/walk/white.png
+  作者: bluecarrot16, Thane Brimhall (pennomi), laetissima,
+        Stephen Challener (Redshrike), Johannes Sjölund (wulax)
+  ライセンス: CC-BY-SA 3.0, GPL 3.0
+  URL: https://opengameart.org/content/lpc-medieval-fantasy-character-sprites,
+       https://opengameart.org/content/lpc-2-characters,
+       https://opengameart.org/content/lpc-gentleman
+  備考: 元は白（white）。ブルーに色変更。
+
+tops/vest__orange_.png
+  元ファイル: torso/clothes/vest/male/walk/orange.png（オレンジ色は元から用意されている配色）
+  作者: bluecarrot16, Thane Brimhall (pennomi), laetissima,
+        Stephen Challener (Redshrike), Johannes Sjölund (wulax)
+  ライセンス: CC-BY-SA 3.0, GPL 3.0
+  URL: https://opengameart.org/content/lpc-2-characters,
+       https://opengameart.org/content/lpc-gentleman,
+       https://opengameart.org/content/lpc-pirates
+  備考: 色変更なし（生成元にオレンジの配色が既に用意されている）。
+
+bottoms/pants__orange_.png
+  元ファイル: legs/pants/male/walk/orange.png（オレンジ色は元から用意されている配色）
+  作者: bluecarrot16, JaidynReiman, ElizaWy, Matthew Krohn (makrohn),
+        Johannes Sjölund (wulax), Stephen Challener (Redshrike)
+  ライセンス: OGA-BY 3.0, GPL 3.0, CC-BY-SA 3.0
+  URL: https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles,
+       https://opengameart.org/content/lpc-medieval-fantasy-character-sprites,
+       https://opengameart.org/content/lpc-expanded-pants
+  備考: 色変更なし（生成元にオレンジの配色が既に用意されている）。

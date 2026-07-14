@@ -2412,8 +2412,16 @@ function getSpriteCharacterCanvas(characterId) {
   return state.ready ? state.canvas : null;
 }
 
+// 特定のトップスを選んだ時に自動で下に着せる「下地」レイヤー（コートの下のシャツ等）。
+// 単体では選ばれていなくても、対応する上着を着た時にだけ自動で追加される。
+const TOP_UNDERLAYER = {
+  top_coat_navy: "top_shirt_white",
+  top_coat_charcoal: "top_shirt_white",
+  top_vest_orange: "top_undershirt_blue",
+};
+
 // パーツ選択から実際に重ねるレイヤー（zPrefix昇順）を組み立てる。
-// コート選択時は下に着るシャツを自動で補う（sprite-characters.js の元プリセットと同じ見た目にするため）。
+// コート/ベスト選択時は下に着る下地を自動で補う（元の見た目を維持するため）。
 function resolveCustomLayers(parts) {
   const items = [];
   const add = (partId) => {
@@ -2439,9 +2447,7 @@ function resolveCustomLayers(parts) {
     if (parts.hair) add(parts.hair);
     if (parts.shoes) add(parts.shoes);
     if (parts.bottoms) add(parts.bottoms);
-    if (parts.tops === "top_coat_navy" || parts.tops === "top_coat_charcoal") {
-      add("top_shirt_white"); // コートの下に着るシャツ
-    }
+    if (TOP_UNDERLAYER[parts.tops]) add(TOP_UNDERLAYER[parts.tops]);
     if (parts.tops) add(parts.tops);
     if (parts.accessories) add(parts.accessories);
   }
