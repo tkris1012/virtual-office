@@ -95,6 +95,8 @@ const OUTER_EDGE_CRYSTAL_RANGE = 54;
 const CRYSTAL_RECOVERY_INTERVAL_MS = 8 * 60 * 60 * 1000;
 const GAME_STATE_STORAGE_KEY = "virtual-office.game-state";
 const CRYSTAL_SHARD_ITEM_ID = "crystal-shard";
+const OFFICE_EXTENSION_UNLOCK_COST = 3;
+const OFFICE_EXTENSION_SEAL_RELEASE_MS = 2400;
 const IMPORTANT_ITEMS = Object.freeze({
   [CRYSTAL_SHARD_ITEM_ID]: {
     name: "水晶のかけら",
@@ -164,6 +166,7 @@ function createInitialGameState() {
       ])
     ),
     crystalRecovery: { lastCollectionAt: null, restoredCount: 0, updatedAt: now },
+    unlocks: { officeExtension: false },
   };
 }
 
@@ -176,6 +179,7 @@ function loadGameState() {
     if (!saved || saved.version !== 1 || typeof saved !== "object") return initialState;
     const inventory = saved.inventory && typeof saved.inventory === "object" ? saved.inventory : {};
     const worldObjects = saved.worldObjects && typeof saved.worldObjects === "object" ? saved.worldObjects : {};
+    const unlocks = saved.unlocks && typeof saved.unlocks === "object" ? saved.unlocks : {};
     for (const crystal of OUTER_EDGE_CRYSTALS) {
       const fallback = initialState.worldObjects[crystal.id];
       const record = worldObjects[crystal.id];
@@ -193,6 +197,10 @@ function loadGameState() {
       ...saved,
       inventory,
       worldObjects,
+      unlocks: {
+        ...initialState.unlocks,
+        officeExtension: unlocks.officeExtension === true,
+      },
       crystalRecovery: {
         ...initialState.crystalRecovery,
         ...(saved.crystalRecovery && typeof saved.crystalRecovery === "object" ? saved.crystalRecovery : {}),
@@ -206,6 +214,7 @@ function loadGameState() {
 
 let worldState = loadGameState();
 let lastCrystalRecoveryCheckAt = 0;
+let officeExtensionSealReleaseStartedAt = null;
 
 function saveGameState() {
   try {
@@ -222,6 +231,13 @@ function inventoryQuantity(itemId) {
 
 function addInventoryItem(itemId, amount, now = Date.now()) {
   worldState.inventory[itemId] = { quantity: inventoryQuantity(itemId) + amount, updatedAt: now };
+}
+
+function consumeInventoryItem(itemId, amount, now = Date.now()) {
+  const quantity = inventoryQuantity(itemId);
+  if (quantity < amount) return false;
+  worldState.inventory[itemId] = { quantity: quantity - amount, updatedAt: now };
+  return true;
 }
 
 function crystalRecord(crystalId) {
@@ -427,6 +443,11 @@ const outerEdgeImg = new Image();
 let outerEdgeImgReady = false;
 outerEdgeImg.onload = () => (outerEdgeImgReady = true);
 outerEdgeImg.src = "assets/virtual-quest-outer-edge.png";
+
+const officeExtensionDoorSealImg = new Image();
+let officeExtensionDoorSealImgReady = false;
+officeExtensionDoorSealImg.onload = () => (officeExtensionDoorSealImgReady = true);
+officeExtensionDoorSealImg.src = "assets/effects/door-magic-seal.png";
 
 // 壁(通行不可)を正規化座標(0..1)で定義 → 実ピクセルへ変換。
 // ?debug のグリッドを見ながら office.png のレイアウトに合わせて調整する。
@@ -2919,6 +2940,93 @@ function drawOuterEdgeCrystalEffects(now) {
   }
 }
 
+function isOfficeExtensionSealReleasing() {
+  return Number.isFinite(officeExtensionSealReleaseStartedAt);
+}
+
+function finishOfficeExtensionSealRelease() {
+  if (!isOfficeExtensionSealReleasing()) return;
+  officeExtensionSealReleaseStartedAt = null;
+  updateOfficeExtensionPrompts();
+  toast("魔法の封印が消滅した。");
+}
+
+function drawOfficeExtensionDoorSeal(now) {
+  if (
+    currentArea !== AREAS.OFFICE ||
+    (isOfficeExtensionUnlocked() && !isOfficeExtensionSealReleasing()) ||
+    !officeExtensionDoorSealImgReady
+  ) {
+    return;
+  }
+
+  const releaseProgress = isOfficeExtensionSealReleasing()
+    ? Math.min(1, (now - officeExtensionSealReleaseStartedAt) / OFFICE_EXTENSION_SEAL_RELEASE_MS)
+    : 0;
+  if (releaseProgress >= 1) {
+    finishOfficeExtensionSealRelease();
+    return;
+  }
+
+  // 旧霧演出で採寸した実際のドア面。衝突判定用の矩形全体には広げない。
+  const sealWidth = OFFICE_EXTENSION_DOOR.w * 0.34;
+  const baseRect = {
+    x: OFFICE_EXTENSION_DOOR.x - OFFICE_EXTENSION_DOOR.w * 0.08 + sealWidth,
+    y: OFFICE_EXTENSION_DOOR.y + OFFICE_EXTENSION_DOOR.h * 0.2,
+    w: sealWidth,
+    h: OFFICE_EXTENSION_DOOR.h * 0.8,
+  };
+  const releaseEase = releaseProgress * releaseProgress * (3 - 2 * releaseProgress);
+  const releaseScale = 1 + releaseEase * 0.08;
+  const sealRect = {
+    x: baseRect.x - (baseRect.w * (releaseScale - 1)) / 2,
+    y: baseRect.y - (baseRect.h * (releaseScale - 1)) / 2,
+    w: baseRect.w * releaseScale,
+    h: baseRect.h * releaseScale,
+  };
+  // 最初は抵抗するように濃さを保ち、その後ゆっくり消える。
+  const fadeStart = 0.08;
+  const fadeT = Math.max(0, Math.min(1, (releaseProgress - fadeStart) / (1 - fadeStart)));
+  const fade = 1 - fadeT * fadeT * (3 - 2 * fadeT);
+  // 封印全体を同じ位相で明暗させ、魔力が呼吸しているように見せる。
+  const overallCycleMs = 2600;
+  const overallPulse =
+    0.5 + 0.5 * Math.sin((now / overallCycleMs) * Math.PI * 2);
+  const overallAlpha = 0.62 + overallPulse * 0.38;
+  const overallBrightness = 0.72 + overallPulse * 0.48;
+  const bandCount = 9;
+  const sourceBandHeight = officeExtensionDoorSealImg.height / bandCount;
+  const destinationBandHeight = sealRect.h / bandCount;
+  const waveStrength = 0.35 + releaseEase * 1.15;
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.filter = `brightness(${overallBrightness})`;
+  for (let band = 0; band < bandCount; band++) {
+    const phase = now / 360 - band * 0.78;
+    const brightnessWave = 0.5 + 0.5 * Math.sin(phase);
+    const offsetX = Math.sin(phase * 0.82) * waveStrength;
+    ctx.globalAlpha = fade * overallAlpha * (0.88 + brightnessWave * 0.12);
+    ctx.drawImage(
+      officeExtensionDoorSealImg,
+      0,
+      band * sourceBandHeight,
+      officeExtensionDoorSealImg.width,
+      sourceBandHeight + 0.5,
+      sealRect.x + offsetX,
+      sealRect.y + band * destinationBandHeight,
+      sealRect.w,
+      destinationBandHeight + 0.35
+    );
+  }
+
+  // 離散的な明滅をもう一度加算し、暗い波と明るい波の差を出す。
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = fade * overallAlpha * (0.06 + overallPulse * 0.11);
+  ctx.drawImage(officeExtensionDoorSealImg, sealRect.x, sealRect.y, sealRect.w, sealRect.h);
+  ctx.restore();
+}
+
 function render() {
   const now = performance.now();
   // 画面クリア（スクリーン座標）
@@ -2932,6 +3040,7 @@ function render() {
 
   drawFloor();
   drawOuterEdgeCrystalEffects(now);
+  drawOfficeExtensionDoorSeal(now);
   if (currentArea === AREAS.OFFICE) {
     drawZones();
     if (virtualQuestGate) virtualQuestGate.draw(ctx, now);
@@ -3489,6 +3598,27 @@ function isInsideRect(rect) {
   );
 }
 
+function isOfficeExtensionUnlocked() {
+  return worldState.unlocks.officeExtension === true;
+}
+
+function unlockOfficeExtension() {
+  if (isOfficeExtensionUnlocked() || isOfficeExtensionSealReleasing()) return false;
+  if (!consumeInventoryItem(CRYSTAL_SHARD_ITEM_ID, OFFICE_EXTENSION_UNLOCK_COST)) {
+    toast(`水晶のかけらが${OFFICE_EXTENSION_UNLOCK_COST}個必要です`);
+    updateOfficeExtensionPrompts();
+    return false;
+  }
+
+  worldState.unlocks.officeExtension = true;
+  officeExtensionSealReleaseStartedAt = performance.now();
+  saveGameState();
+  updateImportantItemsHud();
+  updateOfficeExtensionPrompts();
+  toast("魔法の封印が、重くほどけ始めた……");
+  return true;
+}
+
 function isPlayerAtOfficeExtensionDoor() {
   return currentArea === AREAS.OFFICE && isInsideRect(OFFICE_EXTENSION_DOOR);
 }
@@ -3520,7 +3650,7 @@ function currentOfficeExtensionMessageSpot() {
 }
 
 function enterOfficeExtensionArea() {
-  if (currentArea === AREAS.OFFICE_EXTENSION) return;
+  if (currentArea === AREAS.OFFICE_EXTENSION || isOfficeExtensionSealReleasing()) return;
   extensionReturnPosition = { x: me.x, y: me.y };
   currentArea = AREAS.OFFICE_EXTENSION;
   clearMovementInput();
@@ -3562,7 +3692,28 @@ function updateOfficeExtensionPrompts() {
   const blocked = isBlockingOverlayOpen();
   const messageSpot = blocked ? null : currentOfficeExtensionMessageSpot();
 
-  if (enterPrompt) enterPrompt.hidden = !isPlayerAtOfficeExtensionDoor() || blocked;
+  if (enterPrompt) {
+    const unlocked = isOfficeExtensionUnlocked();
+    const releasing = isOfficeExtensionSealReleasing();
+    const actionButton = enterPrompt.querySelector("button");
+    const description = enterPrompt.querySelector(".office-extension-enter-description");
+    enterPrompt.hidden = !isPlayerAtOfficeExtensionDoor() || blocked;
+    if (description) {
+      description.textContent = releasing
+        ? "封印がゆっくりとほどけている……"
+        : unlocked
+        ? "ドアから移動できます"
+        : `魔法の封印。水晶のかけらを${OFFICE_EXTENSION_UNLOCK_COST}個使って解放できます（${inventoryQuantity(
+            CRYSTAL_SHARD_ITEM_ID
+          )} / ${OFFICE_EXTENSION_UNLOCK_COST}）`;
+    }
+    if (actionButton) {
+      actionButton.textContent = releasing ? "封印解除中…" : unlocked ? "入る" : "封印を解放する";
+      actionButton.disabled =
+        releasing ||
+        (!unlocked && inventoryQuantity(CRYSTAL_SHARD_ITEM_ID) < OFFICE_EXTENSION_UNLOCK_COST);
+    }
+  }
   if (returnPrompt) returnPrompt.hidden = !isPlayerAtOfficeExtensionReturnDoor() || blocked;
   if (messagePanel) {
     messagePanel.hidden = !messageSpot;
@@ -3582,12 +3733,16 @@ function setupOfficeExtensionStageControls() {
   enterPrompt.innerHTML = `
     <div class="virtual-quest-prompt-copy">
       <strong>拡張部屋</strong>
-      <span>ドアから移動できます</span>
+      <span class="office-extension-enter-description"></span>
     </div>
     <span class="virtual-quest-prompt-key">F</span>
-    <button type="button">入る</button>
+    <button type="button"></button>
   `;
-  enterPrompt.querySelector("button").addEventListener("click", enterOfficeExtensionArea);
+  enterPrompt.querySelector("button").addEventListener("click", () => {
+    if (isOfficeExtensionSealReleasing()) return;
+    if (isOfficeExtensionUnlocked()) enterOfficeExtensionArea();
+    else unlockOfficeExtension();
+  });
   document.body.appendChild(enterPrompt);
 
   const returnPrompt = document.createElement("div");
@@ -3625,7 +3780,9 @@ function setupOfficeExtensionStageControls() {
     }
     if (isPlayerAtOfficeExtensionDoor()) {
       event.preventDefault();
-      enterOfficeExtensionArea();
+      if (isOfficeExtensionSealReleasing()) return;
+      if (isOfficeExtensionUnlocked()) enterOfficeExtensionArea();
+      else unlockOfficeExtension();
       return;
     }
     if (isPlayerAtOfficeExtensionReturnDoor()) {
