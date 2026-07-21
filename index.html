@@ -98,9 +98,8 @@
     <button id="btn-screen" class="ctrl" type="button" aria-label="画面共有" data-help="自分の画面を参加者へ共有"><i class="ti ti-screen-share" aria-hidden="true"></i></button>
     <button id="btn-announce" class="ctrl" type="button" aria-label="アナウンス（ショートカット: R）" aria-keyshortcuts="R" aria-pressed="false" data-help="ルーム全員へ音声を配信（R）"><i class="ti ti-speakerphone" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">R</span></button>
     <button id="btn-summon" class="ctrl" type="button" aria-label="集合（ショートカット: T）" aria-keyshortcuts="T" data-help="選択したメンバーを自分の場所へ呼ぶ（T）"><i class="ti ti-users" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">T</span></button>
-    <button id="btn-message" class="ctrl" type="button" aria-label="ひとことメッセージ（ショートカット: M）" aria-keyshortcuts="M" data-help="アバター上に短いメッセージを表示（M）"><i class="ti ti-message-circle" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">M</span></button>
     <button id="btn-stamp" class="ctrl" type="button" aria-label="スタンプ（ショートカット: E）" aria-keyshortcuts="E" data-help="アバターの周りにリアクションを表示（E）"><i class="ti ti-mood-smile" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">E</span></button>
-    <button id="btn-chat" class="ctrl" type="button" aria-label="チャット（ショートカット: C）" aria-keyshortcuts="C" data-help="ルーム全体のチャットを開く（C）"><i class="ti ti-messages" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">C</span><span id="chat-badge" class="chat-badge" hidden>0</span></button>
+    <button id="btn-chat" class="ctrl" type="button" aria-label="チャット（ショートカット: C）" aria-keyshortcuts="C" data-help="アバター上に表示＆ルーム全体の履歴に残す（C）"><i class="ti ti-messages" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">C</span><span id="chat-badge" class="chat-badge" hidden>0</span></button>
     <button id="btn-invite" class="ctrl" type="button" aria-label="招待リンク" data-help="合言葉入りの招待URLをコピー"><i class="ti ti-link" aria-hidden="true"></i></button>
     <button id="btn-settings" class="ctrl" type="button" aria-label="プロフィール設定（ショートカット: P）" aria-keyshortcuts="P" data-help="表示名やアイコンを変更（P）"><i class="ti ti-settings" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">P</span></button>
     <button id="btn-leave" class="ctrl" type="button" aria-label="退出（ショートカット: Q）" aria-keyshortcuts="Q" data-help="現在のルームから退出（Q）"><i class="ti ti-logout" aria-hidden="true"></i><span class="shortcut-badge" aria-hidden="true">Q</span></button>
@@ -162,23 +161,23 @@
     <span class="volume-note">相手の音声と通知音に適用されます</span>
   </div>
 
-  <!-- ひとことメッセージ（最新1件のみ・履歴なし） -->
-  <div id="message-popover" class="popover" hidden>
-    <label class="message-label" for="message-input">ひとことメッセージ</label>
-    <input
-      id="message-input"
-      type="text"
-      maxlength="15"
+  <!-- チャットのクイック入力（アバター上の吹き出し表示 → 送信すると履歴ウィンドウにも残る） -->
+  <div id="chat-quick-popover" class="popover" hidden>
+    <label class="message-label" for="chat-quick-input">チャット</label>
+    <textarea
+      id="chat-quick-input"
+      maxlength="200"
+      rows="1"
       autocomplete="off"
       placeholder="例: 15時まで集中しています"
-    />
+    ></textarea>
     <div class="message-meta">
-      <span id="message-count">0 / 15</span>
-      <span>改行不可</span>
+      <span id="chat-quick-count">0 / 200</span>
+      <span>Shift+Enterで改行</span>
     </div>
     <div class="message-actions">
-      <button id="message-clear" class="ctrl-text danger" type="button">削除</button>
-      <button id="message-send" class="ctrl-text primary" type="button">表示する</button>
+      <button id="chat-quick-history" class="ctrl-text" type="button" aria-label="チャット履歴を見る"><i class="ti ti-history" aria-hidden="true"></i> 履歴を見る</button>
+      <button id="chat-quick-send" class="ctrl-text primary" type="button">送信</button>
     </div>
   </div>
 
@@ -294,6 +293,12 @@
       <div class="console-section-title">アイコンを選ぶ（一覧・チャットで表示）</div>
       <div id="preset-grid" class="preset-grid"></div>
 
+      <div class="console-section-title">チャット</div>
+      <label class="console-toggle-row" for="console-chat-always-show">
+        <span>チャット履歴ウィンドウを常時表示する</span>
+        <input id="console-chat-always-show" type="checkbox" class="console-toggle" />
+      </label>
+
       <button id="upload-icon" class="ctrl-text" type="button"><i class="ti ti-upload" aria-hidden="true"></i> 画像をアップロード</button>
       <input id="icon-file" type="file" accept="image/png,image/jpeg" hidden />
       <span id="console-note" class="console-note"></span>
@@ -332,6 +337,7 @@
   <!-- チャット（ルーム全体・毎朝5時に自動削除） -->
   <div id="chat-backdrop" hidden></div>
   <aside id="chat-panel" hidden>
+    <div id="chat-resize-handle" role="separator" aria-orientation="vertical" aria-label="チャット履歴の幅を変更"></div>
     <div class="chat-head">
       <div class="chat-head-text">
         <span class="chat-title">チャット</span>
@@ -341,7 +347,7 @@
     </div>
     <div id="chat-messages" class="chat-messages"></div>
     <form id="chat-form" class="chat-form">
-      <input id="chat-input" type="text" maxlength="200" placeholder="メッセージを入力" autocomplete="off" />
+      <textarea id="chat-input" maxlength="200" rows="1" placeholder="メッセージを入力（Shift+Enterで改行）" autocomplete="off"></textarea>
       <button id="chat-send" class="ctrl-text" type="submit">送信</button>
     </form>
   </aside>

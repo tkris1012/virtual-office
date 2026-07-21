@@ -616,13 +616,11 @@ const me = {
   iconUrl: "", // アップロード画像URL（iconType==="upload"）
   spriteCharacterId: DEFAULT_SPRITE_CHARACTER_ID, // マップ上のキャラクター（プリセット選択時）。パーツ個別編集時は CUSTOM_SPRITE_ID
   spriteParts: defaultPartsForCharacter(DEFAULT_SPRITE_CHARACTER_ID), // パーツ個別編集の現在値（体型・髪型・トップス・ボトムス・靴・アクセサリー）
-  message: "", // 在席中だけ表示する最新のひとこと（履歴・永続保存なし）
-  messageEventId: "",
   active: false, // このタブが表示中かつ通話準備済み
 };
 camera.x = me.x; // 開始時のカメラを自分に合わせる（追従の初期ジャンプ防止）
 camera.y = me.y;
-const others = {}; // id -> {x, y, name, color, active?, message?, messageEventId?, announcing?, summon?}
+const others = {}; // id -> {x, y, name, color, active?, announcing?, summon?}
 let announcing = false; // 全体アナウンス中か（自分）
 let lastSummonTs = Date.now(); // 自分が処理済みの最新の集合ts（join前の古い集合は無視）
 let media = null; // MediaController（カメラ/マイク/背景/画面共有）
@@ -653,7 +651,10 @@ let presenceServerTimeOffsetUnsubscribe = null;
 let presenceHeartbeatTimer = null;
 let presenceSweepTimer = null;
 let presenceServerTimeOffset = 0;
-const seenMessageEventIds = new Map();
+// チャットの吹き出し表示（アバター上）。uid -> { text, expiresAt }。
+// チャットログの onChildAdded から都度更新するローカルのみの状態（RTDBには保存しない）。
+const BUBBLE_DURATION_MS = 8000;
+const chatBubbles = new Map();
 const seenStampEventIds = new Map();
 const peersInChimeRange = new Set();
 const lastProximityChimeAt = new Map();
@@ -713,6 +714,39 @@ let chatPanelOpen = false;
 let unreadChatCount = 0;
 const sentChatTimes = [];
 let lastChatRateLimitToastAt = 0;
+
+// チャット履歴パネルの「常時表示」設定（端末ローカルのみ・プロフィール設定から切り替え）
+const CHAT_ALWAYS_SHOW_KEY = "vo_chat_always_show";
+function loadChatAlwaysShow() {
+  try {
+    return localStorage.getItem(CHAT_ALWAYS_SHOW_KEY) === "1";
+  } catch (_) {
+    return false;
+  }
+}
+function saveChatAlwaysShow(value) {
+  try {
+    localStorage.setItem(CHAT_ALWAYS_SHOW_KEY, value ? "1" : "0");
+  } catch (_) {}
+}
+let chatAlwaysShow = loadChatAlwaysShow();
+
+// チャット履歴パネルの幅（ドラッグでリサイズ・端末ローカルに記憶）
+const CHAT_WIDTH_KEY = "vo_chat_width";
+const CHAT_WIDTH_MIN = 280;
+const CHAT_WIDTH_MAX = 640;
+function loadChatWidth() {
+  try {
+    const raw = Number(localStorage.getItem(CHAT_WIDTH_KEY));
+    if (Number.isFinite(raw) && raw >= CHAT_WIDTH_MIN && raw <= CHAT_WIDTH_MAX) return raw;
+  } catch (_) {}
+  return null;
+}
+function saveChatWidth(width) {
+  try {
+    localStorage.setItem(CHAT_WIDTH_KEY, String(Math.round(width)));
+  } catch (_) {}
+}
 
 function ensureNotificationAudio() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -829,10 +863,6 @@ function normalizePlayer(id, value) {
     spriteParts,
     area,
     questAreaName: area !== AREAS.OFFICE ? safeDisplayName(value.questAreaName, AREA_LABELS[area]) : "",
-    message:
-      typeof value.message === "string"
-        ? Array.from(value.message.replace(/[\r\n\u2028\u2029]+/g, " ")).slice(0, 15).join("")
-        : "",
   };
 }
 
@@ -873,8 +903,6 @@ function currentPresencePayload() {
     spriteParts: me.spriteParts || defaultPartsForCharacter(DEFAULT_SPRITE_CHARACTER_ID),
     announcing: !!announcing,
     sharing: !!(media && media.screenOn),
-    message: me.message || null,
-    messageEventId: me.message ? me.messageEventId || null : null,
     area: currentArea,
     questAreaName,
     active,
@@ -992,7 +1020,6 @@ function setupControls(media) {
   const bgBtn = document.getElementById("btn-bg");
   const annBtn = document.getElementById("btn-announce");
   const summonBtn = document.getElementById("btn-summon");
-  const messageBtn = document.getElementById("btn-message");
   const stampBtn = document.getElementById("btn-stamp");
   const chatBtn = document.getElementById("btn-chat");
 
@@ -1002,17 +1029,19 @@ function setupControls(media) {
   const outputVolumeValue = document.getElementById("output-volume-value");
   const summonPanel = document.getElementById("summon-panel");
   const summonList = document.getElementById("summon-list");
-  const messagePopover = document.getElementById("message-popover");
-  const messageInput = document.getElementById("message-input");
-  const messageCount = document.getElementById("message-count");
-  const messageSend = document.getElementById("message-send");
-  const messageClear = document.getElementById("message-clear");
+  const chatQuickPopover = document.getElementById("chat-quick-popover");
+  const chatQuickInput = document.getElementById("chat-quick-input");
+  const chatQuickCount = document.getElementById("chat-quick-count");
+  const chatQuickSend = document.getElementById("chat-quick-send");
+  const chatQuickHistory = document.getElementById("chat-quick-history");
   const stampPopover = document.getElementById("stamp-popover");
   const stampOptions = [...stampPopover.querySelectorAll("[data-stamp]")];
   const chatBackdrop = document.getElementById("chat-backdrop");
   const chatClose = document.getElementById("chat-close");
   const chatForm = document.getElementById("chat-form");
   const chatInput = document.getElementById("chat-input");
+  const chatResizeHandle = document.getElementById("chat-resize-handle");
+  const chatAlwaysShowToggle = document.getElementById("console-chat-always-show");
 
   const bgMode = document.getElementById("bg-mode");
   const blurRange = document.getElementById("blur-range");
@@ -1030,73 +1059,47 @@ function setupControls(media) {
     outputVolumePopover.hidden = true;
     volumeBtn.setAttribute("aria-expanded", "false");
     summonPanel.hidden = true;
-    messagePopover.hidden = true;
+    chatQuickPopover.hidden = true;
     stampPopover.hidden = true;
   };
 
-  // 改行を空白へ変換し、最新の15文字だけを扱う。履歴やプロフィールには保存しない。
-  const sanitizeMessage = (value) =>
-    Array.from(String(value || "").replace(/[\r\n\u2028\u2029]+/g, " "))
-      .slice(0, 15)
-      .join("");
-  const normalizeMessage = (value) => sanitizeMessage(value).trim();
-  const syncMessageUI = () => {
-    const value = sanitizeMessage(messageInput.value);
-    if (messageInput.value !== value) messageInput.value = value;
-    messageCount.textContent = `${Array.from(value).length} / 15`;
-    messageClear.disabled = !me.message;
-    messageBtn.classList.toggle("active", !!me.message);
-    messageBtn.setAttribute(
-      "aria-label",
-      me.message
-        ? "ひとことメッセージ（表示中、ショートカット: M）"
-        : "ひとことメッセージ（ショートカット: M）"
-    );
+  // 入力行数に応じて textarea の高さを自動で伸ばす（1行分ずつ）
+  const autoResizeTextarea = (el) => {
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
   };
-  const publishMessage = async () => {
-    const value = normalizeMessage(messageInput.value);
-    if (!value) {
-      toast("メッセージを入力してください");
-      messageInput.focus();
+
+  // --- チャットのクイック入力ポップオーバー ---
+  const syncChatQuickUI = () => {
+    chatQuickCount.textContent = `${Array.from(chatQuickInput.value).length} / ${CHAT_MAX_LEN}`;
+  };
+  const openChatQuickPopover = () => {
+    closePopovers();
+    chatQuickInput.value = ""; // 前回の入力内容は保持しない（毎回空で開く）
+    syncChatQuickUI();
+    chatQuickPopover.hidden = false;
+    autoResizeTextarea(chatQuickInput);
+    chatQuickInput.focus();
+  };
+  const sendFromQuickPopover = async () => {
+    const text = chatQuickInput.value;
+    if (!sanitizeChatText(text)) {
+      chatQuickPopover.hidden = true;
       return;
     }
-    try {
-      const messageEventId = createEventId();
-      await update(meRef, { message: value, messageEventId });
-      me.message = value;
-      me.messageEventId = messageEventId;
-      messageInput.value = value;
-      syncMessageUI();
-      messagePopover.hidden = true;
-      playNotificationChime("message");
-      toast("ひとことメッセージを表示しました");
-    } catch (e) {
-      console.warn("メッセージ送信失敗:", e);
-      toast("メッセージを表示できませんでした");
+    chatQuickInput.value = "";
+    autoResizeTextarea(chatQuickInput);
+    syncChatQuickUI();
+    noteHudActivity();
+    const ok = await sendChatMessage(text);
+    if (ok) {
+      chatQuickPopover.hidden = true;
+      openChatPanel({ focus: false }); // 送信直後にキーボード操作(移動など)を奪わない
+    } else {
+      chatQuickInput.value = text; // 失敗時は入力内容を復元
+      autoResizeTextarea(chatQuickInput);
+      syncChatQuickUI();
     }
-  };
-  const clearMessage = async () => {
-    if (!me.message) return;
-    try {
-      await update(meRef, { message: null, messageEventId: null });
-      me.message = "";
-      me.messageEventId = "";
-      messageInput.value = "";
-      syncMessageUI();
-      messagePopover.hidden = true;
-      toast("ひとことメッセージを削除しました");
-    } catch (e) {
-      console.warn("メッセージ削除失敗:", e);
-      toast("メッセージを削除できませんでした");
-    }
-  };
-  const openMessagePopover = () => {
-    closePopovers();
-    messageInput.value = me.message || "";
-    syncMessageUI();
-    messagePopover.hidden = false;
-    messageInput.focus();
-    messageInput.select();
   };
   const openStampPopover = () => {
     closePopovers();
@@ -1371,27 +1374,6 @@ function setupControls(media) {
     toast(`${targets.length}人を自分の場所に集合させました`);
   });
 
-  // --- ひとことメッセージ（プレイヤーごとに最新1件だけ上書き）---
-  messageBtn.addEventListener("click", () => {
-    const show = messagePopover.hidden;
-    closePopovers();
-    if (show) openMessagePopover();
-  });
-  messageInput.addEventListener("input", syncMessageUI);
-  messageInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.isComposing) {
-      e.preventDefault();
-      if (normalizeMessage(messageInput.value)) {
-        publishMessage();
-      } else if (me.message) {
-        clearMessage();
-      } else {
-        messagePopover.hidden = true;
-      }
-    }
-  });
-  messageSend.addEventListener("click", publishMessage);
-  messageClear.addEventListener("click", clearMessage);
   stampBtn.addEventListener("click", () => {
     const show = stampPopover.hidden;
     closePopovers();
@@ -1404,11 +1386,27 @@ function setupControls(media) {
     });
   });
 
-  // --- チャット（ルーム全体・毎朝5時に自動削除）---
+  // --- チャット（クイック入力ポップオーバー＋履歴ウィンドウ・毎朝5時に自動削除）---
   chatBtn.addEventListener("click", () => {
+    const show = chatQuickPopover.hidden;
     closePopovers();
-    toggleChatPanel();
+    if (show) openChatQuickPopover();
     noteHudActivity();
+  });
+  chatQuickInput.addEventListener("input", () => {
+    syncChatQuickUI();
+    autoResizeTextarea(chatQuickInput);
+  });
+  chatQuickInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      sendFromQuickPopover();
+    }
+  });
+  chatQuickSend.addEventListener("click", sendFromQuickPopover);
+  chatQuickHistory.addEventListener("click", () => {
+    closePopovers();
+    openChatPanel();
   });
   chatClose.addEventListener("click", closeChatPanel);
   chatBackdrop.addEventListener("click", closeChatPanel);
@@ -1417,10 +1415,21 @@ function setupControls(media) {
     const text = chatInput.value;
     if (!sanitizeChatText(text)) return;
     chatInput.value = "";
+    autoResizeTextarea(chatInput);
     noteHudActivity();
     const ok = await sendChatMessage(text);
-    if (!ok) chatInput.value = text; // 失敗時は入力内容を復元
+    if (!ok) {
+      chatInput.value = text; // 失敗時は入力内容を復元
+      autoResizeTextarea(chatInput);
+    }
     chatInput.focus();
+  });
+  chatInput.addEventListener("input", () => autoResizeTextarea(chatInput));
+  chatInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      chatForm.requestSubmit();
+    }
   });
 
   document.addEventListener("keydown", (event) => {
@@ -1431,8 +1440,8 @@ function setupControls(media) {
         event.preventDefault();
         return;
       }
-      if (!messagePopover.hidden || !stampPopover.hidden) {
-        const returnFocus = !messagePopover.hidden ? messageBtn : stampBtn;
+      if (!chatQuickPopover.hidden || !stampPopover.hidden) {
+        const returnFocus = !chatQuickPopover.hidden ? chatBtn : stampBtn;
         closePopovers();
         returnFocus.focus();
         event.preventDefault();
@@ -1531,17 +1540,6 @@ function setupControls(media) {
       return;
     }
     if (
-      shortcutKey === "m" &&
-      !event.repeat &&
-      !event.isComposing &&
-      !isEditableTarget(event.target) &&
-      !isBlockingOverlayOpen()
-    ) {
-      event.preventDefault();
-      openMessagePopover();
-      noteHudActivity();
-    }
-    if (
       shortcutKey === "c" &&
       !event.repeat &&
       !event.isComposing &&
@@ -1549,7 +1547,9 @@ function setupControls(media) {
       !isBlockingOverlayOpen(["chat-panel"])
     ) {
       event.preventDefault();
-      toggleChatPanel();
+      const show = chatQuickPopover.hidden;
+      closePopovers();
+      if (show) openChatQuickPopover();
       noteHudActivity();
     }
   });
@@ -1562,14 +1562,15 @@ function setupControls(media) {
   syncOutputVolumeUI();
   syncScreenUI();
   syncBgUI();
-  syncMessageUI();
+  setupChatResize(chatResizeHandle);
+  setupChatAlwaysShow(chatAlwaysShowToggle);
 }
 
 // ---- presence (Realtime Database) ----
 // 匿名サインインで uid が確定してから呼ぶ
 function removeOtherPlayer(id) {
   delete others[id];
-  seenMessageEventIds.delete(id);
+  chatBubbles.delete(id);
   seenStampEventIds.delete(id);
   peersInChimeRange.delete(id);
   lastProximityChimeAt.delete(id);
@@ -1712,7 +1713,9 @@ function processStampEvents(id, stampEvents) {
 // ---- チャットの送受信・描画 ----
 function sanitizeChatText(value) {
   return String(value || "")
-    .replace(/[\r\n\u2028\u2029]+/g, " ")
+    .replace(/\r\n?/g, "\n") // CRLF/CR \u3092 LF \u306b\u7d71\u4e00
+    .replace(/[\u2028\u2029]+/g, "\n") // \u7279\u6b8a\u306a\u6539\u884c\u6587\u5b57\u3082LF\u306b\u7d71\u4e00
+    .replace(/\n{3,}/g, "\n\n") // 3\u884c\u4ee5\u4e0a\u306e\u9023\u7d9a\u6539\u884c\u306f2\u884c\u307e\u3067\u306b\u6291\u3048\u308b
     .trim()
     .slice(0, CHAT_MAX_LEN);
 }
@@ -1796,6 +1799,13 @@ function appendChatMessage(id, value) {
   if (nearBottom || isMe) list.scrollTop = list.scrollHeight;
 }
 
+// 送信者のアバター上に一定時間だけ表示する吹き出し用の状態を更新する（RTDBには保存しないローカルのみの状態）
+function updateChatBubble(value) {
+  if (!value || !value.uid || typeof value.text !== "string") return;
+  const ts = Number.isFinite(value.ts) ? value.ts : Date.now();
+  chatBubbles.set(value.uid, { text: value.text, expiresAt: ts + BUBBLE_DURATION_MS });
+}
+
 function removeChatMessageDom(id) {
   const list = document.getElementById("chat-messages");
   if (!list) return;
@@ -1815,9 +1825,12 @@ function updateChatBadge() {
   }
 }
 
-function openChatPanel() {
+// focus: 明示的な操作（ボタン/ショートカット/送信）で開いた時だけ入力欄にフォーカスする。
+// 常時表示設定による自動オープン時は、移動キー入力を奪わないようフォーカスしない。
+function openChatPanel({ focus = true } = {}) {
   chatPanelOpen = true;
-  document.getElementById("chat-backdrop").hidden = false;
+  // 常時表示モードでは、地図の操作を邪魔しないよう背景の暗いオーバーレイは出さない
+  document.getElementById("chat-backdrop").hidden = chatAlwaysShow;
   const panel = document.getElementById("chat-panel");
   panel.hidden = false;
   panel.classList.add("closing");
@@ -1826,8 +1839,10 @@ function openChatPanel() {
   updateChatBadge();
   const list = document.getElementById("chat-messages");
   if (list) list.scrollTop = list.scrollHeight;
-  const input = document.getElementById("chat-input");
-  if (input) input.focus();
+  if (focus) {
+    const input = document.getElementById("chat-input");
+    if (input) input.focus();
+  }
 }
 
 function closeChatPanel() {
@@ -1844,6 +1859,53 @@ function closeChatPanel() {
 function toggleChatPanel() {
   if (chatPanelOpen) closeChatPanel();
   else openChatPanel();
+}
+
+function setupChatResize(handle) {
+  if (!handle) return;
+  const panel = document.getElementById("chat-panel");
+  if (!panel) return;
+  const savedWidth = loadChatWidth();
+  if (savedWidth) panel.style.width = savedWidth + "px";
+
+  let dragging = false;
+  let startX = 0;
+  let startWidth = 0;
+
+  const onMove = (e) => {
+    if (!dragging) return;
+    // 右端固定・左端をドラッグするため、左へ動かすほど幅が広がる（符号を反転）
+    const delta = startX - e.clientX;
+    const next = Math.min(CHAT_WIDTH_MAX, Math.max(CHAT_WIDTH_MIN, startWidth + delta));
+    panel.style.width = next + "px";
+  };
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    panel.classList.remove("resizing");
+    saveChatWidth(panel.getBoundingClientRect().width);
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+  };
+  handle.addEventListener("pointerdown", (e) => {
+    dragging = true;
+    startX = e.clientX;
+    startWidth = panel.getBoundingClientRect().width;
+    panel.classList.add("resizing");
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    e.preventDefault();
+  });
+}
+
+function setupChatAlwaysShow(toggle) {
+  if (!toggle) return;
+  toggle.checked = chatAlwaysShow;
+  toggle.addEventListener("change", () => {
+    chatAlwaysShow = toggle.checked;
+    saveChatAlwaysShow(chatAlwaysShow);
+    if (chatAlwaysShow) openChatPanel({ focus: false });
+  });
 }
 
 // 直近10秒に送れる件数を制限し、連投による書き込み過多を防ぐ（スタンプの連打対策と同じ考え方）。
@@ -1899,7 +1961,10 @@ async function initChatSync() {
   const entries = Object.entries(initial).sort(
     ([, a], [, b]) => Number(a && a.ts) - Number(b && b.ts)
   );
-  for (const [id, value] of entries) appendChatMessage(id, value);
+  for (const [id, value] of entries) {
+    appendChatMessage(id, value);
+    updateChatBubble(value); // 読み込み直後にごく最近の発言があれば吹き出しも復元する
+  }
   if (!entries.length && list) showChatEmptyState(list);
   if (list) list.scrollTop = list.scrollHeight;
 
@@ -1912,6 +1977,7 @@ async function initChatSync() {
     }
     const value = snap.val();
     appendChatMessage(snap.key, value);
+    updateChatBubble(value);
     if (value && value.uid !== myId) {
       playNotificationChime("chat");
       if (!chatPanelOpen) {
@@ -1929,7 +1995,6 @@ async function initPresence() {
   me.active = false;
   lastPublishedActive = false;
   presenceInitialized = false;
-  seenMessageEventIds.clear();
   seenStampEventIds.clear();
   await onDisconnect(meRef).remove(); // タブを閉じたら自動削除
   await set(meRef, currentPresencePayload());
@@ -1949,7 +2014,6 @@ async function initPresence() {
   presencePlayersUnsubscribe = onValue(ref(db, `rooms/${ROOM}/players`), (snap) => {
     const all = snap.val() || {};
     const now = presenceServerNow();
-    let messageChanged = false;
     const validOtherIds = new Set();
     for (const id in all) {
       if (id === myId) continue;
@@ -1961,16 +2025,6 @@ async function initPresence() {
       validOtherIds.add(id);
       carrySpriteAnimationState(player, others[id]);
       others[id] = player;
-      const eventId = player.messageEventId || "";
-      if (
-        presenceInitialized &&
-        eventId &&
-        eventId !== seenMessageEventIds.get(id) &&
-        player.message
-      ) {
-        messageChanged = true;
-      }
-      seenMessageEventIds.set(id, eventId);
       processStampEvents(id, player.stampEvents);
     }
     // 退出したプレイヤーを掃除
@@ -1993,7 +2047,6 @@ async function initPresence() {
         }
       }
     }
-    if (messageChanged) playNotificationChime("message");
     if (presenceInitialized) updateProximityChimes();
     else {
       seedProximityChimeRange();
@@ -2594,25 +2647,33 @@ const MESSAGE_MAX_WIDTH = 120;
 const MESSAGE_PADDING_X = 5;
 const MESSAGE_PADDING_Y = 4;
 const MESSAGE_LINE_HEIGHT = 8;
+const BUBBLE_LINE_CHARS = 15; // \u30a2\u30d0\u30bf\u30fc\u4e0a\u306e\u5439\u304d\u51fa\u3057\u306f1\u884c\u3042\u305f\u308a\u3053\u306e\u6587\u5b57\u6570\u3067\u56fa\u5b9a\u6298\u308a\u8fd4\u3057
+const BUBBLE_MAX_LINES = 2; // \u8d85\u904e\u5206\u306f\u672b\u5c3e\u3092 "..." \u306b\u3057\u3066\u7701\u7565\uff08\u5168\u6587\u306f\u30c1\u30e3\u30c3\u30c8\u5c65\u6b74\u3067\u78ba\u8a8d\uff09
 
-function messageLines(message) {
-  const text = Array.from(String(message || "").replace(/[\r\n\u2028\u2029]+/g, " "))
-    .slice(0, 15)
-    .join("");
-  if (!text) return [];
-  const lines = [];
-  let line = "";
-  for (const char of Array.from(text)) {
-    const next = line + char;
-    if (line && ctx.measureText(next).width > MESSAGE_MAX_WIDTH - MESSAGE_PADDING_X * 2) {
-      lines.push(line);
-      line = char;
-    } else {
-      line = next;
+// \u30a2\u30d0\u30bf\u30fc\u4e0a\u306e\u5439\u304d\u51fa\u3057\u8868\u793a\u7528\u306b\u30011\u884c15\u6587\u5b57\u30fb\u6700\u59272\u884c\u3067\u6298\u308a\u8fd4\u3059\uff08\u672c\u6587\u306e\u6539\u884c\u306f\u305d\u306e\u307e\u307e\u884c\u533a\u5207\u308a\u3068\u3057\u3066\u6271\u3046\uff09\u3002
+function bubbleLines(text) {
+  const raw = String(text || "");
+  if (!raw) return [];
+  const wrapped = [];
+  for (const paragraph of raw.split("\n")) {
+    const chars = Array.from(paragraph);
+    if (!chars.length) {
+      wrapped.push("");
+      continue;
+    }
+    for (let i = 0; i < chars.length; i += BUBBLE_LINE_CHARS) {
+      wrapped.push(chars.slice(i, i + BUBBLE_LINE_CHARS).join(""));
     }
   }
-  if (line) lines.push(line);
-  return lines;
+  if (wrapped.length <= BUBBLE_MAX_LINES) return wrapped;
+  const shown = wrapped.slice(0, BUBBLE_MAX_LINES);
+  const lastIndex = BUBBLE_MAX_LINES - 1;
+  let last = shown[lastIndex];
+  if (last.length + 3 > BUBBLE_LINE_CHARS) {
+    last = last.slice(0, Math.max(0, BUBBLE_LINE_CHARS - 3));
+  }
+  shown[lastIndex] = last + "...";
+  return shown;
 }
 
 function roundedRectPath(x, y, width, height, radius) {
@@ -2630,14 +2691,15 @@ function roundedRectPath(x, y, width, height, radius) {
   ctx.closePath();
 }
 
-function drawMessageBubble(p, isMe) {
-  if (!p.message) return;
+function drawMessageBubble(p, isMe, id) {
+  const bubble = chatBubbles.get(id);
+  if (!bubble || !bubble.text || Date.now() > bubble.expiresAt) return;
   ctx.save();
   ctx.font = "6px sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
 
-  const lines = messageLines(p.message);
+  const lines = bubbleLines(bubble.text);
   if (!lines.length) {
     ctx.restore();
     return;
@@ -3061,10 +3123,10 @@ function render() {
   if (currentArea === AREAS.OFFICE) {
     for (const id in others) {
       if (!isPlayerInCurrentArea(others[id])) continue;
-      drawMessageBubble(others[id], false);
+      drawMessageBubble(others[id], false, id);
     }
   }
-  drawMessageBubble(me, true);
+  drawMessageBubble(me, true, myId);
 
   ctx.setTransform(1, 0, 0, 1, 0, 0); // 後始末
 }
@@ -3809,7 +3871,7 @@ function isHudPaused() {
   const bg = document.getElementById("bg-popover");
   const volume = document.getElementById("output-volume-popover");
   const sp = document.getElementById("summon-panel");
-  const mp = document.getElementById("message-popover");
+  const mp = document.getElementById("chat-quick-popover");
   const stamp = document.getElementById("stamp-popover");
   const leaveConfirm = document.getElementById("leave-confirm-dialog");
   const questGate = document.getElementById("virtual-quest-gate-modal");
@@ -3841,7 +3903,7 @@ function cancelTransientHudOperations() {
     virtualQuestGate.closeModal();
     shouldBlur = true;
   }
-  for (const id of ["bg-popover", "output-volume-popover", "stamp-popover", "message-popover", "summon-panel"]) {
+  for (const id of ["bg-popover", "output-volume-popover", "stamp-popover", "chat-quick-popover", "summon-panel"]) {
     const panel = document.getElementById(id);
     if (!panel || panel.hidden) continue;
     if (activeElement && panel.contains(activeElement)) shouldBlur = true;
@@ -3960,6 +4022,7 @@ async function start() {
   makeTile("__me__", me.name + "（あなた）", stream, true, true);
   setupControls(media);
   initChatSync().catch((e) => console.warn("チャット初期化失敗:", e));
+  if (chatAlwaysShow) openChatPanel({ focus: false });
 
   // 4) WebRTC マネージャ（iceServers は起動時に一度だけ解決＝Metered動的取得も反映）
   const iceServers = await getIceServers();
