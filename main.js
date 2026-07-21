@@ -1036,12 +1036,12 @@ function setupControls(media) {
   const chatQuickHistory = document.getElementById("chat-quick-history");
   const stampPopover = document.getElementById("stamp-popover");
   const stampOptions = [...stampPopover.querySelectorAll("[data-stamp]")];
-  const chatBackdrop = document.getElementById("chat-backdrop");
   const chatClose = document.getElementById("chat-close");
   const chatForm = document.getElementById("chat-form");
   const chatInput = document.getElementById("chat-input");
   const chatResizeHandle = document.getElementById("chat-resize-handle");
   const chatAlwaysShowToggle = document.getElementById("console-chat-always-show");
+  const chatEdgeToggle = document.getElementById("chat-edge-toggle");
 
   const bgMode = document.getElementById("bg-mode");
   const blurRange = document.getElementById("blur-range");
@@ -1409,7 +1409,10 @@ function setupControls(media) {
     openChatPanel();
   });
   chatClose.addEventListener("click", closeChatPanel);
-  chatBackdrop.addEventListener("click", closeChatPanel);
+  chatEdgeToggle.addEventListener("click", () => {
+    closePopovers();
+    toggleChatPanel({ focus: false });
+  });
   chatForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const text = chatInput.value;
@@ -1544,7 +1547,7 @@ function setupControls(media) {
       !event.repeat &&
       !event.isComposing &&
       !isEditableTarget(event.target) &&
-      !isBlockingOverlayOpen(["chat-panel"])
+      !isBlockingOverlayOpen()
     ) {
       event.preventDefault();
       const show = chatQuickPopover.hidden;
@@ -1827,10 +1830,30 @@ function updateChatBadge() {
 
 // focus: 明示的な操作（ボタン/ショートカット/送信）で開いた時だけ入力欄にフォーカスする。
 // 常時表示設定による自動オープン時は、移動キー入力を奪わないようフォーカスしない。
+// 履歴パネルは常に非モーダル（背景を暗くしない・地図操作を妨げない）。
+// 開閉状態に合わせて画面端の「‹/›」タブの位置とアイコンを更新する。
+function updateChatEdgeTogglePosition() {
+  const toggle = document.getElementById("chat-edge-toggle");
+  if (!toggle) return;
+  const panel = document.getElementById("chat-panel");
+  const icon = toggle.querySelector("i");
+  if (chatPanelOpen && panel) {
+    const width = panel.getBoundingClientRect().width;
+    toggle.style.right = width + "px";
+    if (icon) icon.className = "ti ti-chevron-right";
+    toggle.setAttribute("aria-label", "チャット履歴を閉じる");
+    toggle.setAttribute("aria-expanded", "true");
+  } else {
+    toggle.style.right = "0px";
+    if (icon) icon.className = "ti ti-chevron-left";
+    toggle.setAttribute("aria-label", "チャット履歴を開く");
+    toggle.setAttribute("aria-expanded", "false");
+  }
+}
+
+// focus: 明示的な操作（送信/ショートカット等）で開いた時だけ入力欄にフォーカスする。
 function openChatPanel({ focus = true } = {}) {
   chatPanelOpen = true;
-  // 常時表示モードでは、地図の操作を邪魔しないよう背景の暗いオーバーレイは出さない
-  document.getElementById("chat-backdrop").hidden = chatAlwaysShow;
   const panel = document.getElementById("chat-panel");
   panel.hidden = false;
   panel.classList.add("closing");
@@ -1843,22 +1866,23 @@ function openChatPanel({ focus = true } = {}) {
     const input = document.getElementById("chat-input");
     if (input) input.focus();
   }
+  updateChatEdgeTogglePosition();
 }
 
 function closeChatPanel() {
   chatPanelOpen = false;
   const panel = document.getElementById("chat-panel");
   panel.classList.add("closing");
-  document.getElementById("chat-backdrop").hidden = true;
   setTimeout(() => {
     panel.hidden = true;
     panel.classList.remove("closing");
   }, 220);
+  updateChatEdgeTogglePosition();
 }
 
-function toggleChatPanel() {
+function toggleChatPanel(opts) {
   if (chatPanelOpen) closeChatPanel();
-  else openChatPanel();
+  else openChatPanel(opts);
 }
 
 function setupChatResize(handle) {
@@ -1878,6 +1902,7 @@ function setupChatResize(handle) {
     const delta = startX - e.clientX;
     const next = Math.min(CHAT_WIDTH_MAX, Math.max(CHAT_WIDTH_MIN, startWidth + delta));
     panel.style.width = next + "px";
+    updateChatEdgeTogglePosition(); // 開閉タブもパネルの左端に追従させる
   };
   const onUp = () => {
     if (!dragging) return;
@@ -3305,8 +3330,9 @@ function isEditableTarget(target) {
   );
 }
 
+// チャット履歴パネルは非モーダル（地図操作・他のショートカットを妨げない）のため対象外。
 function isBlockingOverlayOpen(excludeIds = []) {
-  return ["slime-game-modal", "virtual-quest-gate-modal", "crop-modal", "console", "chat-panel", "leave-confirm-dialog"].some((id) => {
+  return ["slime-game-modal", "virtual-quest-gate-modal", "crop-modal", "console", "leave-confirm-dialog"].some((id) => {
     if (excludeIds.includes(id)) return false;
     const element = document.getElementById(id);
     return element && !element.hidden;
