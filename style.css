@@ -1173,7 +1173,9 @@ body.game-open #joystick {
   max-width: 88vw;
   display: flex;
   flex-direction: column;
-  background: #161b28;
+  background: rgba(15, 19, 30, 0.55); /* 半透明。背後の地図が透けて見える */
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-left: 0.5px solid var(--panel-border);
   box-shadow: -6px 0 24px rgba(0, 0, 0, 0.5);
   transform: translateX(0);
