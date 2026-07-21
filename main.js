@@ -1839,12 +1839,14 @@ function updateChatEdgeTogglePosition() {
   const icon = toggle.querySelector("i");
   if (chatPanelOpen && panel) {
     const width = panel.getBoundingClientRect().width;
-    toggle.style.right = width + "px";
+    // right ではなく transform で動かす＝パネル本体の transform アニメーションと
+    // 同じコンポジタ駆動になり、開閉アニメーション中もズレずに追従する
+    toggle.style.transform = `translate(-${width}px, -50%)`;
     if (icon) icon.className = "ti ti-chevron-right";
     toggle.setAttribute("aria-label", "チャット履歴を閉じる");
     toggle.setAttribute("aria-expanded", "true");
   } else {
-    toggle.style.right = "0px";
+    toggle.style.transform = "translate(0, -50%)";
     if (icon) icon.className = "ti ti-chevron-left";
     toggle.setAttribute("aria-label", "チャット履歴を開く");
     toggle.setAttribute("aria-expanded", "false");
@@ -1888,6 +1890,7 @@ function toggleChatPanel(opts) {
 function setupChatResize(handle) {
   if (!handle) return;
   const panel = document.getElementById("chat-panel");
+  const toggle = document.getElementById("chat-edge-toggle");
   if (!panel) return;
   const savedWidth = loadChatWidth();
   if (savedWidth) panel.style.width = savedWidth + "px";
@@ -1908,6 +1911,7 @@ function setupChatResize(handle) {
     if (!dragging) return;
     dragging = false;
     panel.classList.remove("resizing");
+    if (toggle) toggle.classList.remove("no-transition");
     saveChatWidth(panel.getBoundingClientRect().width);
     window.removeEventListener("pointermove", onMove);
     window.removeEventListener("pointerup", onUp);
@@ -1917,6 +1921,8 @@ function setupChatResize(handle) {
     startX = e.clientX;
     startWidth = panel.getBoundingClientRect().width;
     panel.classList.add("resizing");
+    // ドラッグ中はタブのtransitionを止め、マウスの動きに直接追従させる（遅延防止）
+    if (toggle) toggle.classList.add("no-transition");
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     e.preventDefault();

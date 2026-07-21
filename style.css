@@ -1145,7 +1145,7 @@ body.game-open #joystick {
   position: fixed;
   top: 50%;
   right: 0;
-  transform: translateY(-50%);
+  transform: translate(0, -50%);
   z-index: 121;
   width: 22px;
   height: 64px;
@@ -1160,9 +1160,12 @@ body.game-open #joystick {
   align-items: center;
   justify-content: center;
   font-size: 15px;
-  transition: right 0.22s ease;
+  /* パネル本体と同じ transform ベースのアニメーションにして完全に同期させる
+     （right のレイアウトアニメだと transform のコンポジタアニメと同期がズレる） */
+  transition: transform 0.22s ease;
 }
 .chat-edge-toggle:hover { color: #fff; }
+.chat-edge-toggle.no-transition { transition: none; }
 #chat-panel {
   position: fixed;
   right: 0;
@@ -1173,9 +1176,9 @@ body.game-open #joystick {
   max-width: 88vw;
   display: flex;
   flex-direction: column;
-  background: rgba(15, 19, 30, 0.55); /* 半透明。背後の地図が透けて見える */
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(15, 19, 30, 0.32); /* 半透明。背後の地図が透けて見える */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-left: 0.5px solid var(--panel-border);
   box-shadow: -6px 0 24px rgba(0, 0, 0, 0.5);
   transform: translateX(0);
