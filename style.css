@@ -80,6 +80,7 @@ html, body {
 }
 .tile.local.mirror video { transform: scaleX(-1); } /* 自分だけ鏡像 */
 .tile.sharing { border-color: rgba(93, 202, 165, 0.85); } /* 共有中タイル */
+.tile.speaking { border-color: #3ddc72; box-shadow: 0 0 0 2px rgba(61, 220, 114, 0.55); } /* 発話中のタイル */
 .tile .cap {
   position: absolute;
   left: 6px;
