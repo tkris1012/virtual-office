@@ -1086,18 +1086,14 @@ function setupControls(media) {
   };
   const sendFromQuickPopover = async () => {
     const text = chatQuickInput.value;
-    if (!sanitizeChatText(text)) {
-      chatQuickPopover.hidden = true;
-      return;
-    }
+    if (!sanitizeChatText(text)) return; // 空メッセージ等は何もしない（ポップオーバーは開いたまま）
     chatQuickInput.value = "";
     autoResizeTextarea(chatQuickInput);
     syncChatQuickUI();
     noteHudActivity();
     const ok = await sendChatMessage(text);
     if (ok) {
-      chatQuickPopover.hidden = true;
-      openChatPanel({ focus: false }); // 送信直後にキーボード操作(移動など)を奪わない
+      chatQuickInput.focus(); // 連続入力できるようポップオーバーは閉じない
     } else {
       chatQuickInput.value = text; // 失敗時は入力内容を復元
       autoResizeTextarea(chatQuickInput);
