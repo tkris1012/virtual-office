@@ -372,8 +372,8 @@ html, body {
 #output-volume-range { width: 100%; margin: 0; }
 .volume-note { display: block; margin-top: 8px; color: #9aa4b8; font-size: 12px; }
 
-/* ひとことメッセージ */
-#message-popover { width: min(320px, calc(100vw - 32px)); }
+/* チャットのクイック入力ポップオーバー */
+#chat-quick-popover { width: min(320px, calc(100vw - 32px)); }
 .message-label {
   display: block;
   margin-bottom: 8px;
@@ -381,7 +381,7 @@ html, body {
   font-size: 13px;
   font-weight: 700;
 }
-#message-input {
+#chat-quick-input {
   width: 100%;
   box-sizing: border-box;
   padding: 9px 10px;
@@ -391,8 +391,11 @@ html, body {
   border-radius: 8px;
   font: inherit;
   outline: none;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.4;
 }
-#message-input:focus {
+#chat-quick-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
 }
@@ -413,11 +416,6 @@ html, body {
   color: #fff;
   background: var(--accent);
   border-color: transparent;
-}
-.message-actions .danger { color: #ffb4b0; }
-.message-actions .danger:disabled {
-  opacity: 0.45;
-  cursor: default;
 }
 
 /* スタンプ */
@@ -1142,14 +1140,33 @@ body.game-open #joystick {
 }
 .console-logout:hover { background: rgba(255, 154, 169, 0.1); }
 
-/* ---- チャット（ルーム全体・右からスライドイン） ---- */
-#chat-backdrop {
+/* ---- チャット（ルーム全体・右からスライドイン。地図は暗くしない非モーダル） ---- */
+.chat-edge-toggle {
   position: fixed;
-  inset: 0;
-  z-index: 119;
-  background: rgba(0, 0, 0, 0.45);
+  top: 50%;
+  right: 0;
+  transform: translate(0, -50%);
+  z-index: 121;
+  /* スマホでも押しやすいよう十分な当たり判定を確保（見た目より広め） */
+  width: 30px;
+  height: 76px;
+  padding: 0;
+  border-radius: 12px 0 0 12px;
+  background: #161b28;
+  border: 0.5px solid var(--panel-border);
+  border-right: none;
+  color: #cdd6ea;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  /* パネル本体と同じ transform ベースのアニメーションにして完全に同期させる
+     （right のレイアウトアニメだと transform のコンポジタアニメと同期がズレる） */
+  transition: transform 0.22s ease;
 }
-#chat-backdrop[hidden] { display: none; }
+.chat-edge-toggle:hover { color: #fff; }
+.chat-edge-toggle.no-transition { transition: none; }
 #chat-panel {
   position: fixed;
   right: 0;
@@ -1160,7 +1177,9 @@ body.game-open #joystick {
   max-width: 88vw;
   display: flex;
   flex-direction: column;
-  background: #161b28;
+  background: rgba(15, 19, 30, 0.32); /* 半透明。背後の地図が透けて見える */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-left: 0.5px solid var(--panel-border);
   box-shadow: -6px 0 24px rgba(0, 0, 0, 0.5);
   transform: translateX(0);
@@ -1189,6 +1208,12 @@ body.game-open #joystick {
   font-size: 10px;
   line-height: 1.5;
 }
+.chat-messages-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
 .chat-messages {
   flex: 1;
   overflow-y: auto;
@@ -1197,6 +1222,26 @@ body.game-open #joystick {
   flex-direction: column;
   gap: 10px;
 }
+.chat-jump-latest {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.chat-jump-latest[hidden] { display: none; }
+.chat-jump-latest:hover { filter: brightness(1.08); }
 .chat-empty { margin-top: 20px; color: #6f7a90; font-size: 12px; text-align: center; }
 .chat-msg { display: flex; align-items: flex-start; gap: 8px; }
 .chat-msg.me { flex-direction: row-reverse; }
@@ -1231,6 +1276,7 @@ body.game-open #joystick {
 .chat-time { font-size: 10px; color: #6f7a90; }
 .chat-form {
   display: flex;
+  align-items: flex-end;
   gap: 8px;
   padding: 12px 14px;
   border-top: 0.5px solid var(--panel-border);
@@ -1245,6 +1291,9 @@ body.game-open #joystick {
   border-radius: 8px;
   font: inherit;
   outline: none;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.4;
 }
 #chat-input:focus {
   border-color: var(--accent);
@@ -1255,6 +1304,73 @@ body.game-open #joystick {
   color: #fff;
   background: var(--accent);
   border-color: transparent;
+}
+
+/* チャット履歴パネルの幅リサイズハンドル（左端） */
+#chat-resize-handle {
+  position: absolute;
+  left: -4px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+#chat-resize-handle::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+}
+#chat-resize-handle:hover::after,
+#chat-panel.resizing #chat-resize-handle::after {
+  background: var(--accent);
+}
+#chat-panel.resizing { transition: none; }
+
+/* プロフィール設定のトグル行（チャット履歴の常時表示など） */
+.console-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: #cdd6ea;
+  cursor: pointer;
+}
+.console-toggle {
+  appearance: none;
+  width: 38px;
+  height: 22px;
+  flex: 0 0 auto;
+  background: #2a3145;
+  border: 0.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  position: relative;
+  cursor: pointer;
+  outline: none;
+}
+.console-toggle::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #9aa4b8;
+  transition: left 0.15s ease, background 0.15s ease;
+}
+.console-toggle:checked {
+  background: rgba(52, 152, 219, 0.35);
+  border-color: var(--accent);
+}
+.console-toggle:checked::before {
+  left: 18px;
+  background: var(--accent);
 }
 
 /* ---- 画像の円形クロップ ---- */
