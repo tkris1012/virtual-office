@@ -326,22 +326,24 @@
     </div>
   </div>
 
-  <!-- チャット（ルーム全体・毎朝5時に自動削除。地図を暗くせず常にマップ操作可能） -->
-  <button id="chat-edge-toggle" class="chat-edge-toggle" type="button" aria-label="チャット履歴を開く" aria-expanded="false"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>
-  <aside id="chat-panel" hidden>
-    <div id="chat-resize-handle" role="separator" aria-orientation="vertical" aria-label="チャット履歴の幅を変更"></div>
-    <div class="chat-head">
-      <div class="chat-head-text">
-        <span class="chat-title">チャット</span>
-        <p class="chat-notice">※履歴は毎朝5時にリセットされます。<br />個人情報の入力には十分注意して下さい。</p>
+  <!-- チャット（ルーム全体・毎朝5時に自動削除。地図を暗くせず常にマップ操作可能。右下に小さく表示） -->
+  <div id="chat-widget" class="chat-widget">
+    <button id="chat-edge-toggle" class="chat-edge-toggle" type="button" aria-label="チャット履歴を開く" aria-expanded="false"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>
+    <aside id="chat-panel" hidden>
+      <div id="chat-resize-handle" role="separator" aria-orientation="vertical" aria-label="チャット履歴の幅を変更"></div>
+      <div class="chat-head">
+        <div class="chat-head-text">
+          <span class="chat-title">チャット</span>
+          <p class="chat-notice">※履歴は毎朝5時にリセットされます。<br />個人情報の入力には十分注意して下さい。</p>
+        </div>
+        <button id="chat-close" class="gear-btn" type="button" aria-label="閉じる"><i class="ti ti-x" aria-hidden="true"></i></button>
       </div>
-      <button id="chat-close" class="gear-btn" type="button" aria-label="閉じる"><i class="ti ti-x" aria-hidden="true"></i></button>
-    </div>
-    <div class="chat-messages-wrap">
-      <div id="chat-messages" class="chat-messages"></div>
-      <button id="chat-jump-latest" class="chat-jump-latest" type="button" hidden><i class="ti ti-arrow-down" aria-hidden="true"></i> 新着メッセージ</button>
-    </div>
-  </aside>
+      <div class="chat-messages-wrap">
+        <div id="chat-messages" class="chat-messages"></div>
+        <button id="chat-jump-latest" class="chat-jump-latest" type="button" hidden><i class="ti ti-arrow-down" aria-hidden="true"></i> 新着メッセージ</button>
+      </div>
+    </aside>
+  </div>
 
   <!-- 画像の円形クロップ -->
   <div id="crop-modal" hidden>

@@ -1115,9 +1115,17 @@ body.game-open #joystick {
 }
 .console-logout:hover { background: rgba(255, 154, 169, 0.1); }
 
-/* ---- チャット（ルーム全体・右からスライドイン。地図は暗くしない非モーダル） ---- */
-.chat-edge-toggle {
+/* ---- チャット（右下に小さく表示・右からスライドイン。地図は暗くしない非モーダル） ---- */
+.chat-widget {
   position: fixed;
+  right: 0;
+  bottom: 0;
+  /* 画面の約1/3の高さ。小さすぎ/大きすぎを防ぐため上下限を設ける */
+  height: clamp(220px, 33vh, 480px);
+  z-index: 120;
+}
+.chat-edge-toggle {
+  position: absolute;
   top: 50%;
   right: 0;
   transform: translate(0, -50%);
@@ -1143,11 +1151,10 @@ body.game-open #joystick {
 .chat-edge-toggle:hover { color: #fff; }
 .chat-edge-toggle.no-transition { transition: none; }
 #chat-panel {
-  position: fixed;
+  position: absolute;
   right: 0;
   top: 0;
   bottom: 0;
-  z-index: 120;
   width: 340px;
   max-width: 88vw;
   display: flex;
@@ -1156,7 +1163,9 @@ body.game-open #joystick {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-left: 0.5px solid var(--panel-border);
-  box-shadow: -6px 0 24px rgba(0, 0, 0, 0.5);
+  border-top: 0.5px solid var(--panel-border);
+  border-top-left-radius: 14px;
+  box-shadow: -6px -6px 24px rgba(0, 0, 0, 0.5);
   transform: translateX(0);
   transition: transform 0.22s ease;
 }
