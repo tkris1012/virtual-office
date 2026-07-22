@@ -1482,6 +1482,12 @@ function setupControls(media) {
       }
       return;
     }
+    if (event.key === "Tab" && !chatQuickPopover.hidden) {
+      event.preventDefault();
+      closePopovers();
+      toggleChatPanel({ focus: false });
+      return;
+    }
     const shortcutKey = event.key.toLowerCase();
     const canUseControlShortcut =
       !event.repeat &&
