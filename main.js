@@ -1482,9 +1482,9 @@ function setupControls(media) {
       }
       return;
     }
-    if (event.key === "Tab" && !chatQuickPopover.hidden) {
+    if (event.key === "Tab" && (!chatQuickPopover.hidden || chatPanelOpen)) {
       event.preventDefault();
-      closePopovers();
+      if (!chatQuickPopover.hidden) closePopovers();
       toggleChatPanel({ focus: false });
       return;
     }
