@@ -377,8 +377,15 @@ function updateCamera() {
   const halfH = canvas.height / 2 / s;
 
   const insets = cameraOverlayInsetsPx();
-  const rightOverscroll = Math.max(0, insets.right / camera.zoom - R);
-  camera.x = halfW * 2 >= W ? W / 2 : Math.max(halfW, Math.min(W - halfW + rightOverscroll, camera.x));
+  // チャットパネルは不透明に近いオーバーレイなので、隠れる分だけ右へ余分にスクロールしてよい
+  // （R を引くと必要量に対して不足し、パネル幅が広い時に被りが残るため全幅を反映する）
+  const rightOverscroll = insets.right / camera.zoom;
+  if (halfW * 2 >= W + rightOverscroll) {
+    // マップ全体（オーバースクロール込み）が画面に収まる場合は中央寄せ
+    camera.x = (W + rightOverscroll) / 2;
+  } else {
+    camera.x = Math.max(halfW, Math.min(W - halfW + rightOverscroll, camera.x));
+  }
 
   const topOverscroll = Math.max(0, insets.top / camera.zoom - R);
   const bottomOverscroll = Math.max(0, insets.bottom / camera.zoom - R);
