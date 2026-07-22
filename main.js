@@ -1704,12 +1704,6 @@ function sanitizeChatText(value) {
     .slice(0, CHAT_MAX_LEN);
 }
 
-function formatChatTime(ts) {
-  if (!Number.isFinite(ts)) return "";
-  const d = new Date(ts);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
 function showChatEmptyState(list) {
   const empty = document.createElement("div");
   empty.className = "chat-empty";
@@ -1745,11 +1739,8 @@ function appendChatMessage(id, value) {
   const bubble = document.createElement("div");
   bubble.className = "chat-bubble";
   bubble.textContent = value.text; // textContent のみ使用（HTML挿入なし＝XSS対策）
-  const timeEl = document.createElement("span");
-  timeEl.className = "chat-time";
-  timeEl.textContent = formatChatTime(value.ts);
 
-  body.append(nameEl, bubble, timeEl);
+  body.append(nameEl, bubble);
   row.append(body);
   list.appendChild(row);
 
