@@ -361,9 +361,11 @@ function cameraOverlayInsetsPx() {
   const margin = 14;
   const videosRect = visibleElementRect("videos");
   const controlsRect = visibleElementRect("controls");
+  const chatRect = visibleElementRect("chat-panel");
   return {
     top: videosRect ? Math.max(0, videosRect.bottom + margin) : 0,
     bottom: controlsRect ? Math.max(0, window.innerHeight - controlsRect.top + margin) : 0,
+    right: chatRect ? Math.max(0, window.innerWidth - chatRect.left + margin) : 0,
   };
 }
 
@@ -373,9 +375,11 @@ function updateCamera() {
   const s = camera.zoom * dpr;
   const halfW = canvas.width / 2 / s;
   const halfH = canvas.height / 2 / s;
-  camera.x = halfW * 2 >= W ? W / 2 : Math.max(halfW, Math.min(W - halfW, camera.x));
 
   const insets = cameraOverlayInsetsPx();
+  const rightOverscroll = Math.max(0, insets.right / camera.zoom - R);
+  camera.x = halfW * 2 >= W ? W / 2 : Math.max(halfW, Math.min(W - halfW + rightOverscroll, camera.x));
+
   const topOverscroll = Math.max(0, insets.top / camera.zoom - R);
   const bottomOverscroll = Math.max(0, insets.bottom / camera.zoom - R);
   const minY = halfH - topOverscroll;
