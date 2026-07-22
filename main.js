@@ -1036,13 +1036,9 @@ function setupControls(media) {
   const summonList = document.getElementById("summon-list");
   const chatQuickPopover = document.getElementById("chat-quick-popover");
   const chatQuickInput = document.getElementById("chat-quick-input");
-  const chatQuickCount = document.getElementById("chat-quick-count");
-  const chatQuickSend = document.getElementById("chat-quick-send");
   const stampPopover = document.getElementById("stamp-popover");
   const stampOptions = [...stampPopover.querySelectorAll("[data-stamp]")];
   const chatClose = document.getElementById("chat-close");
-  const chatForm = document.getElementById("chat-form");
-  const chatInput = document.getElementById("chat-input");
   const chatResizeHandle = document.getElementById("chat-resize-handle");
   const chatManualOpenOnlyToggle = document.getElementById("console-chat-manual-open-only");
   const chatEdgeToggle = document.getElementById("chat-edge-toggle");
@@ -1074,13 +1070,9 @@ function setupControls(media) {
   };
 
   // --- チャットのクイック入力ポップオーバー ---
-  const syncChatQuickUI = () => {
-    chatQuickCount.textContent = `${Array.from(chatQuickInput.value).length} / ${CHAT_MAX_LEN}`;
-  };
   const openChatQuickPopover = () => {
     closePopovers();
     chatQuickInput.value = ""; // 前回の入力内容は保持しない（毎回空で開く）
-    syncChatQuickUI();
     chatQuickPopover.hidden = false;
     autoResizeTextarea(chatQuickInput);
     chatQuickInput.focus();
@@ -1090,17 +1082,15 @@ function setupControls(media) {
     if (!sanitizeChatText(text)) return; // 空メッセージ等は何もしない（ポップオーバーは開いたまま）
     chatQuickInput.value = "";
     autoResizeTextarea(chatQuickInput);
-    syncChatQuickUI();
     noteHudActivity();
     const ok = await sendChatMessage(text);
     if (ok) {
       // 「手動でのみ開く」設定がOFFの時だけ、送信内容が見えるよう履歴も自動で開く（ポップオーバーは閉じない）
-      if (!chatManualOpenOnly && !chatPanelOpen) openChatPanel({ focus: false });
+      if (!chatManualOpenOnly && !chatPanelOpen) openChatPanel();
       chatQuickInput.focus(); // 連続入力できるようフォーカスはポップオーバー側に維持
     } else {
       chatQuickInput.value = text; // 失敗時は入力内容を復元
       autoResizeTextarea(chatQuickInput);
-      syncChatQuickUI();
     }
   };
   const openStampPopover = () => {
@@ -1395,42 +1385,17 @@ function setupControls(media) {
     if (show) openChatQuickPopover();
     noteHudActivity();
   });
-  chatQuickInput.addEventListener("input", () => {
-    syncChatQuickUI();
-    autoResizeTextarea(chatQuickInput);
-  });
+  chatQuickInput.addEventListener("input", () => autoResizeTextarea(chatQuickInput));
   chatQuickInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       sendFromQuickPopover();
     }
   });
-  chatQuickSend.addEventListener("click", sendFromQuickPopover);
   chatClose.addEventListener("click", closeChatPanel);
   chatEdgeToggle.addEventListener("click", () => {
     closePopovers();
-    toggleChatPanel({ focus: false });
-  });
-  chatForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const text = chatInput.value;
-    if (!sanitizeChatText(text)) return;
-    chatInput.value = "";
-    autoResizeTextarea(chatInput);
-    noteHudActivity();
-    const ok = await sendChatMessage(text);
-    if (!ok) {
-      chatInput.value = text; // 失敗時は入力内容を復元
-      autoResizeTextarea(chatInput);
-    }
-    chatInput.focus();
-  });
-  chatInput.addEventListener("input", () => autoResizeTextarea(chatInput));
-  chatInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
-      e.preventDefault();
-      chatForm.requestSubmit();
-    }
+    toggleChatPanel();
   });
 
   const chatMessagesList = document.getElementById("chat-messages");
@@ -1483,7 +1448,7 @@ function setupControls(media) {
     }
     if (event.key === "Tab" && (!chatQuickPopover.hidden || chatPanelOpen)) {
       event.preventDefault();
-      toggleChatPanel({ focus: false }); // ポップオーバーは開いたまま、履歴パネルだけを開閉する
+      toggleChatPanel(); // ポップオーバーは開いたまま、履歴パネルだけを開閉する
       return;
     }
     const shortcutKey = event.key.toLowerCase();
@@ -1745,29 +1710,6 @@ function formatChatTime(ts) {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-// 送信者のアイコンは現在の在席情報から解決する（メッセージ自体にはアイコンを持たせない＝軽量）。
-// 退出済みなど在席が無い場合は名前の頭文字にフォールバック。
-function renderChatAvatar(container, uid, name) {
-  container.textContent = "";
-  container.style.background = "";
-  const player = uid === myId ? me : others[uid];
-  if (player && player.iconType === "upload" && player.iconUrl) {
-    const img = document.createElement("img");
-    img.src = player.iconUrl;
-    img.alt = "";
-    container.appendChild(img);
-    return;
-  }
-  const preset = player ? presetById(player.iconId) : null;
-  if (preset) {
-    container.style.background = preset.bg;
-    container.textContent = preset.emoji;
-  } else {
-    container.style.background = "#555b6e";
-    container.textContent = safeDisplayName(name, "?").slice(0, 1).toUpperCase();
-  }
-}
-
 function showChatEmptyState(list) {
   const empty = document.createElement("div");
   empty.className = "chat-empty";
@@ -1795,10 +1737,6 @@ function appendChatMessage(id, value) {
   row.className = "chat-msg" + (isMe ? " me" : "");
   row.dataset.msgId = id;
 
-  const avatar = document.createElement("div");
-  avatar.className = "chat-avatar";
-  renderChatAvatar(avatar, value.uid, value.name);
-
   const body = document.createElement("div");
   body.className = "chat-body";
   const nameEl = document.createElement("span");
@@ -1812,7 +1750,7 @@ function appendChatMessage(id, value) {
   timeEl.textContent = formatChatTime(value.ts);
 
   body.append(nameEl, bubble, timeEl);
-  row.append(avatar, body);
+  row.append(body);
   list.appendChild(row);
 
   trimChatDom(list);
@@ -1875,8 +1813,7 @@ function updateChatEdgeTogglePosition() {
   }
 }
 
-// focus: 明示的な操作（送信/ショートカット等）で開いた時だけ入力欄にフォーカスする。
-function openChatPanel({ focus = true } = {}) {
+function openChatPanel() {
   chatPanelOpen = true;
   const panel = document.getElementById("chat-panel");
   panel.hidden = false;
@@ -1888,10 +1825,6 @@ function openChatPanel({ focus = true } = {}) {
   if (list) list.scrollTop = list.scrollHeight;
   const jumpBtn = document.getElementById("chat-jump-latest");
   if (jumpBtn) jumpBtn.hidden = true;
-  if (focus) {
-    const input = document.getElementById("chat-input");
-    if (input) input.focus();
-  }
   updateChatEdgeTogglePosition();
 }
 
@@ -1906,9 +1839,9 @@ function closeChatPanel() {
   updateChatEdgeTogglePosition();
 }
 
-function toggleChatPanel(opts) {
+function toggleChatPanel() {
   if (chatPanelOpen) closeChatPanel();
-  else openChatPanel(opts);
+  else openChatPanel();
 }
 
 function setupChatResize(handle) {
