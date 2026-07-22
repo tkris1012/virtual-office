@@ -1093,7 +1093,8 @@ function setupControls(media) {
     noteHudActivity();
     const ok = await sendChatMessage(text);
     if (ok) {
-      chatQuickInput.focus(); // 連続入力できるようポップオーバーは閉じない
+      if (!chatPanelOpen) openChatPanel({ focus: false }); // 送信内容が見えるよう履歴も開く（ポップオーバーは閉じない）
+      chatQuickInput.focus(); // 連続入力できるようフォーカスはポップオーバー側に維持
     } else {
       chatQuickInput.value = text; // 失敗時は入力内容を復元
       autoResizeTextarea(chatQuickInput);
