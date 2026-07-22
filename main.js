@@ -719,21 +719,22 @@ let unreadChatCount = 0;
 const sentChatTimes = [];
 let lastChatRateLimitToastAt = 0;
 
-// チャット履歴パネルの「常時表示」設定（端末ローカルのみ・プロフィール設定から切り替え）
-const CHAT_ALWAYS_SHOW_KEY = "vo_chat_always_show";
-function loadChatAlwaysShow() {
+// チャット履歴パネルを「手動でのみ開く」設定（端末ローカルのみ・プロフィール設定から切り替え）
+// ONの間は、クイック入力ポップオーバーから送信しても履歴パネルを自動で開かない。
+const CHAT_MANUAL_OPEN_ONLY_KEY = "vo_chat_manual_open_only";
+function loadChatManualOpenOnly() {
   try {
-    return localStorage.getItem(CHAT_ALWAYS_SHOW_KEY) === "1";
+    return localStorage.getItem(CHAT_MANUAL_OPEN_ONLY_KEY) === "1";
   } catch (_) {
     return false;
   }
 }
-function saveChatAlwaysShow(value) {
+function saveChatManualOpenOnly(value) {
   try {
-    localStorage.setItem(CHAT_ALWAYS_SHOW_KEY, value ? "1" : "0");
+    localStorage.setItem(CHAT_MANUAL_OPEN_ONLY_KEY, value ? "1" : "0");
   } catch (_) {}
 }
-let chatAlwaysShow = loadChatAlwaysShow();
+let chatManualOpenOnly = loadChatManualOpenOnly();
 
 // チャット履歴パネルの幅（ドラッグでリサイズ・端末ローカルに記憶）
 const CHAT_WIDTH_KEY = "vo_chat_width";
@@ -1043,7 +1044,7 @@ function setupControls(media) {
   const chatForm = document.getElementById("chat-form");
   const chatInput = document.getElementById("chat-input");
   const chatResizeHandle = document.getElementById("chat-resize-handle");
-  const chatAlwaysShowToggle = document.getElementById("console-chat-always-show");
+  const chatManualOpenOnlyToggle = document.getElementById("console-chat-manual-open-only");
   const chatEdgeToggle = document.getElementById("chat-edge-toggle");
 
   const bgMode = document.getElementById("bg-mode");
@@ -1093,7 +1094,8 @@ function setupControls(media) {
     noteHudActivity();
     const ok = await sendChatMessage(text);
     if (ok) {
-      if (!chatPanelOpen) openChatPanel({ focus: false }); // 送信内容が見えるよう履歴も開く（ポップオーバーは閉じない）
+      // 「手動でのみ開く」設定がOFFの時だけ、送信内容が見えるよう履歴も自動で開く（ポップオーバーは閉じない）
+      if (!chatManualOpenOnly && !chatPanelOpen) openChatPanel({ focus: false });
       chatQuickInput.focus(); // 連続入力できるようフォーカスはポップオーバー側に維持
     } else {
       chatQuickInput.value = text; // 失敗時は入力内容を復元
@@ -1580,7 +1582,7 @@ function setupControls(media) {
   syncScreenUI();
   syncBgUI();
   setupChatResize(chatResizeHandle);
-  setupChatAlwaysShow(chatAlwaysShowToggle);
+  setupChatManualOpenOnly(chatManualOpenOnlyToggle);
 }
 
 // ---- presence (Realtime Database) ----
@@ -1951,13 +1953,12 @@ function setupChatResize(handle) {
   });
 }
 
-function setupChatAlwaysShow(toggle) {
+function setupChatManualOpenOnly(toggle) {
   if (!toggle) return;
-  toggle.checked = chatAlwaysShow;
+  toggle.checked = chatManualOpenOnly;
   toggle.addEventListener("change", () => {
-    chatAlwaysShow = toggle.checked;
-    saveChatAlwaysShow(chatAlwaysShow);
-    if (chatAlwaysShow) openChatPanel({ focus: false });
+    chatManualOpenOnly = toggle.checked;
+    saveChatManualOpenOnly(chatManualOpenOnly);
   });
 }
 
@@ -4076,7 +4077,6 @@ async function start() {
   makeTile("__me__", me.name + "（あなた）", stream, true, true);
   setupControls(media);
   initChatSync().catch((e) => console.warn("チャット初期化失敗:", e));
-  if (chatAlwaysShow) openChatPanel({ focus: false });
 
   // 4) WebRTC マネージャ（iceServers は起動時に一度だけ解決＝Metered動的取得も反映）
   const iceServers = await getIceServers();
