@@ -373,16 +373,17 @@ html, body {
 .volume-note { display: block; margin-top: 8px; color: #9aa4b8; font-size: 12px; }
 
 /* チャットのクイック入力ポップオーバー（入力エリアのみ） */
-#chat-quick-popover { width: min(320px, calc(100vw - 32px)); }
+#chat-quick-popover { width: min(320px, calc(100vw - 32px)); padding: 8px; }
 #chat-quick-input {
   width: 100%;
   box-sizing: border-box;
-  padding: 9px 10px;
+  padding: 7px 8px;
   color: var(--text);
   background: #20263a;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
   font: inherit;
+  font-size: 13px;
   outline: none;
   resize: none;
   overflow: hidden;
@@ -1115,9 +1116,17 @@ body.game-open #joystick {
 }
 .console-logout:hover { background: rgba(255, 154, 169, 0.1); }
 
-/* ---- チャット（ルーム全体・右からスライドイン。地図は暗くしない非モーダル） ---- */
-.chat-edge-toggle {
+/* ---- チャット（右下に小さく表示・右からスライドイン。地図は暗くしない非モーダル） ---- */
+.chat-widget {
   position: fixed;
+  right: 0;
+  bottom: 0;
+  /* 画面の約半分の高さ。小さすぎ/大きすぎを防ぐため上下限を設ける */
+  height: clamp(320px, 50vh, 680px);
+  z-index: 120;
+}
+.chat-edge-toggle {
+  position: absolute;
   top: 50%;
   right: 0;
   transform: translate(0, -50%);
@@ -1143,12 +1152,11 @@ body.game-open #joystick {
 .chat-edge-toggle:hover { color: #fff; }
 .chat-edge-toggle.no-transition { transition: none; }
 #chat-panel {
-  position: fixed;
+  position: absolute;
   right: 0;
   top: 0;
   bottom: 0;
-  z-index: 120;
-  width: 340px;
+  width: 400px;
   max-width: 88vw;
   display: flex;
   flex-direction: column;
@@ -1156,7 +1164,9 @@ body.game-open #joystick {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-left: 0.5px solid var(--panel-border);
-  box-shadow: -6px 0 24px rgba(0, 0, 0, 0.5);
+  border-top: 0.5px solid var(--panel-border);
+  border-top-left-radius: 14px;
+  box-shadow: -6px -6px 24px rgba(0, 0, 0, 0.5);
   transform: translateX(0);
   transition: transform 0.22s ease;
 }
@@ -1167,13 +1177,13 @@ body.game-open #joystick {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px 18px;
+  padding: 8px 12px;
   border-bottom: 0.5px solid var(--panel-border);
 }
 .chat-head-text {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 2px;
   min-width: 0;
 }
 .chat-title { font-size: 16px; font-weight: 700; }
@@ -1221,19 +1231,18 @@ body.game-open #joystick {
 .chat-msg { display: flex; }
 .chat-body { display: flex; flex-direction: column; gap: 2px; max-width: 80%; }
 .chat-msg.me .chat-body { align-items: flex-end; margin-left: auto; }
-.chat-name { font-size: 11px; color: #9aa4b8; }
+.chat-name { font-size: 10px; color: #9aa4b8; }
 .chat-bubble {
-  padding: 7px 11px;
+  padding: 3px 11px;
   border-radius: 12px;
   background: #232a3c;
   color: #fff;
-  font-size: 13.5px;
+  font-size: 12.5px;
   line-height: 1.4;
   word-break: break-word;
   white-space: pre-wrap;
 }
 .chat-msg.me .chat-bubble { background: var(--accent); }
-.chat-time { font-size: 10px; color: #6f7a90; }
 
 /* チャット履歴パネルの幅リサイズハンドル（左端） */
 #chat-resize-handle {
