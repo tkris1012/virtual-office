@@ -370,27 +370,15 @@ function cameraOverlayInsetsPx() {
 }
 
 function updateCamera() {
+  camera.x += (me.x - camera.x) * 0.15;
+
   const s = camera.zoom * dpr;
   const halfW = canvas.width / 2 / s;
   const halfH = canvas.height / 2 / s;
 
   const insets = cameraOverlayInsetsPx();
-  // チャットパネルは不透明に近いオーバーレイなので、隠れる分だけ右へ余分にスクロールしてよい
-  // （R を引かずに全幅反映する：プレイヤーの移動可能範囲が W-R までなので、
-  //   ここで R を引いてしまうと逆に不足し、パネル最大幅で被りが生じる）
-  const rightOverscroll = insets.right / camera.zoom;
-  const rightBound = W - halfW + rightOverscroll;
-  if (halfW * 2 >= W + rightOverscroll) {
-    // 拡張後のマップ幅が画面に収まる場合は中央寄せ（パネル分だけ右にオフセット）
-    camera.x = (W + rightOverscroll) / 2;
-  } else {
-    // 右端付近（通常のクランプが効き始める位置）ではパネルの裏まで
-    // あらかじめ追従先を伸ばしておき、クランプ止まりで頭打ちにならないようにする
-    const rightEdgeZoneStart = W - halfW;
-    const followX = me.x > rightEdgeZoneStart ? me.x + rightOverscroll : me.x;
-    camera.x += (followX - camera.x) * 0.15;
-    camera.x = Math.max(halfW, Math.min(rightBound, camera.x));
-  }
+  const rightOverscroll = Math.max(0, insets.right / camera.zoom - R);
+  camera.x = halfW * 2 >= W ? W / 2 : Math.max(halfW, Math.min(W - halfW + rightOverscroll, camera.x));
 
   const topOverscroll = Math.max(0, insets.top / camera.zoom - R);
   const bottomOverscroll = Math.max(0, insets.bottom / camera.zoom - R);
