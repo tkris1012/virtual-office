@@ -1481,8 +1481,7 @@ function setupControls(media) {
     }
     if (event.key === "Tab" && (!chatQuickPopover.hidden || chatPanelOpen)) {
       event.preventDefault();
-      if (!chatQuickPopover.hidden) closePopovers();
-      toggleChatPanel({ focus: false });
+      toggleChatPanel({ focus: false }); // ポップオーバーは開いたまま、履歴パネルだけを開閉する
       return;
     }
     const shortcutKey = event.key.toLowerCase();
