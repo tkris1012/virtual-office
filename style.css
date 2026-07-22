@@ -1120,8 +1120,8 @@ body.game-open #joystick {
   position: fixed;
   right: 0;
   bottom: 0;
-  /* 画面の約1/3の高さ。小さすぎ/大きすぎを防ぐため上下限を設ける */
-  height: clamp(220px, 33vh, 480px);
+  /* 画面の約半分の高さ。小さすぎ/大きすぎを防ぐため上下限を設ける */
+  height: clamp(320px, 50vh, 680px);
   z-index: 120;
 }
 .chat-edge-toggle {
@@ -1230,19 +1230,19 @@ body.game-open #joystick {
 .chat-msg { display: flex; }
 .chat-body { display: flex; flex-direction: column; gap: 2px; max-width: 80%; }
 .chat-msg.me .chat-body { align-items: flex-end; margin-left: auto; }
-.chat-name { font-size: 11px; color: #9aa4b8; }
+.chat-name { font-size: 10px; color: #9aa4b8; }
 .chat-bubble {
   padding: 7px 11px;
   border-radius: 12px;
   background: #232a3c;
   color: #fff;
-  font-size: 13.5px;
+  font-size: 12.5px;
   line-height: 1.4;
   word-break: break-word;
   white-space: pre-wrap;
 }
 .chat-msg.me .chat-bubble { background: var(--accent); }
-.chat-time { font-size: 10px; color: #6f7a90; }
+.chat-time { font-size: 9px; color: #6f7a90; }
 
 /* チャット履歴パネルの幅リサイズハンドル（左端） */
 #chat-resize-handle {
