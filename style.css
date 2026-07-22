@@ -1147,10 +1147,11 @@ body.game-open #joystick {
   right: 0;
   transform: translate(0, -50%);
   z-index: 121;
-  width: 22px;
-  height: 64px;
+  /* スマホでも押しやすいよう十分な当たり判定を確保（見た目より広め） */
+  width: 30px;
+  height: 76px;
   padding: 0;
-  border-radius: 10px 0 0 10px;
+  border-radius: 12px 0 0 12px;
   background: #161b28;
   border: 0.5px solid var(--panel-border);
   border-right: none;
@@ -1159,7 +1160,7 @@ body.game-open #joystick {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 15px;
+  font-size: 17px;
   /* パネル本体と同じ transform ベースのアニメーションにして完全に同期させる
      （right のレイアウトアニメだと transform のコンポジタアニメと同期がズレる） */
   transition: transform 0.22s ease;
@@ -1207,6 +1208,12 @@ body.game-open #joystick {
   font-size: 10px;
   line-height: 1.5;
 }
+.chat-messages-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
 .chat-messages {
   flex: 1;
   overflow-y: auto;
@@ -1215,6 +1222,26 @@ body.game-open #joystick {
   flex-direction: column;
   gap: 10px;
 }
+.chat-jump-latest {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.chat-jump-latest[hidden] { display: none; }
+.chat-jump-latest:hover { filter: brightness(1.08); }
 .chat-empty { margin-top: 20px; color: #6f7a90; font-size: 12px; text-align: center; }
 .chat-msg { display: flex; align-items: flex-start; gap: 8px; }
 .chat-msg.me { flex-direction: row-reverse; }

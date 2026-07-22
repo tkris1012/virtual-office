@@ -176,7 +176,6 @@
       <span>Shift+Enterで改行</span>
     </div>
     <div class="message-actions">
-      <button id="chat-quick-history" class="ctrl-text" type="button" aria-label="チャット履歴を見る"><i class="ti ti-history" aria-hidden="true"></i> 履歴を見る</button>
       <button id="chat-quick-send" class="ctrl-text primary" type="button">送信</button>
     </div>
   </div>
@@ -345,7 +344,10 @@
       </div>
       <button id="chat-close" class="gear-btn" type="button" aria-label="閉じる"><i class="ti ti-x" aria-hidden="true"></i></button>
     </div>
-    <div id="chat-messages" class="chat-messages"></div>
+    <div class="chat-messages-wrap">
+      <div id="chat-messages" class="chat-messages"></div>
+      <button id="chat-jump-latest" class="chat-jump-latest" type="button" hidden><i class="ti ti-arrow-down" aria-hidden="true"></i> 新着メッセージ</button>
+    </div>
     <form id="chat-form" class="chat-form">
       <textarea id="chat-input" maxlength="200" rows="1" placeholder="メッセージを入力（Shift+Enterで改行）" autocomplete="off"></textarea>
       <button id="chat-send" class="ctrl-text" type="submit">送信</button>

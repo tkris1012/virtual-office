@@ -1033,7 +1033,6 @@ function setupControls(media) {
   const chatQuickInput = document.getElementById("chat-quick-input");
   const chatQuickCount = document.getElementById("chat-quick-count");
   const chatQuickSend = document.getElementById("chat-quick-send");
-  const chatQuickHistory = document.getElementById("chat-quick-history");
   const stampPopover = document.getElementById("stamp-popover");
   const stampOptions = [...stampPopover.querySelectorAll("[data-stamp]")];
   const chatClose = document.getElementById("chat-close");
@@ -1404,10 +1403,6 @@ function setupControls(media) {
     }
   });
   chatQuickSend.addEventListener("click", sendFromQuickPopover);
-  chatQuickHistory.addEventListener("click", () => {
-    closePopovers();
-    openChatPanel();
-  });
   chatClose.addEventListener("click", closeChatPanel);
   chatEdgeToggle.addEventListener("click", () => {
     closePopovers();
@@ -1433,6 +1428,19 @@ function setupControls(media) {
       e.preventDefault();
       chatForm.requestSubmit();
     }
+  });
+
+  const chatMessagesList = document.getElementById("chat-messages");
+  const chatJumpLatest = document.getElementById("chat-jump-latest");
+  chatMessagesList.addEventListener("scroll", () => {
+    if (chatJumpLatest.hidden) return;
+    const nearBottom =
+      chatMessagesList.scrollHeight - chatMessagesList.scrollTop - chatMessagesList.clientHeight < 60;
+    if (nearBottom) chatJumpLatest.hidden = true;
+  });
+  chatJumpLatest.addEventListener("click", () => {
+    chatMessagesList.scrollTop = chatMessagesList.scrollHeight;
+    chatJumpLatest.hidden = true;
   });
 
   document.addEventListener("keydown", (event) => {
@@ -1773,6 +1781,7 @@ function appendChatMessage(id, value) {
 
   const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 60;
   const isMe = value.uid === myId;
+  const shouldJump = !nearBottom && !isMe;
 
   const row = document.createElement("div");
   row.className = "chat-msg" + (isMe ? " me" : "");
@@ -1799,7 +1808,12 @@ function appendChatMessage(id, value) {
   list.appendChild(row);
 
   trimChatDom(list);
-  if (nearBottom || isMe) list.scrollTop = list.scrollHeight;
+  if (nearBottom || isMe) {
+    list.scrollTop = list.scrollHeight;
+  } else if (shouldJump) {
+    const jumpBtn = document.getElementById("chat-jump-latest");
+    if (jumpBtn) jumpBtn.hidden = false;
+  }
 }
 
 // 送信者のアバター上に一定時間だけ表示する吹き出し用の状態を更新する（RTDBには保存しないローカルのみの状態）
@@ -1864,6 +1878,8 @@ function openChatPanel({ focus = true } = {}) {
   updateChatBadge();
   const list = document.getElementById("chat-messages");
   if (list) list.scrollTop = list.scrollHeight;
+  const jumpBtn = document.getElementById("chat-jump-latest");
+  if (jumpBtn) jumpBtn.hidden = true;
   if (focus) {
     const input = document.getElementById("chat-input");
     if (input) input.focus();
