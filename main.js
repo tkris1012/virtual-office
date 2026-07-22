@@ -1036,9 +1036,6 @@ function setupControls(media) {
   const chatBtn = document.getElementById("btn-chat");
 
   const bgPopover = document.getElementById("bg-popover");
-  const outputVolumePopover = document.getElementById("output-volume-popover");
-  const outputVolumeRange = document.getElementById("output-volume-range");
-  const outputVolumeValue = document.getElementById("output-volume-value");
   const summonPanel = document.getElementById("summon-panel");
   const summonList = document.getElementById("summon-list");
   const chatQuickPopover = document.getElementById("chat-quick-popover");
@@ -1063,8 +1060,6 @@ function setupControls(media) {
   };
   const closePopovers = () => {
     bgPopover.hidden = true;
-    outputVolumePopover.hidden = true;
-    volumeBtn.setAttribute("aria-expanded", "false");
     summonPanel.hidden = true;
     chatQuickPopover.hidden = true;
     stampPopover.hidden = true;
@@ -1160,19 +1155,13 @@ function setupControls(media) {
     );
   }
   function syncOutputVolumeUI() {
-    const percent = Math.round(outputVolume * 100);
-    outputVolumeRange.value = String(percent);
-    outputVolumeValue.textContent = `${percent}%`;
-    outputVolumeRange.setAttribute("aria-valuetext", `${percent}%`);
-    const icon =
-      percent === 0
-        ? "ti-volume-off"
-        : percent <= 50
-          ? "ti-volume-2"
-          : "ti-volume";
-    setIcon(volumeBtn, icon);
-    volumeBtn.classList.toggle("off", percent === 0);
-    volumeBtn.setAttribute("aria-label", `出力音量 ${percent}%（ショートカット: U）`);
+    const on = outputVolume > 0;
+    setIcon(volumeBtn, on ? "ti-volume" : "ti-volume-off");
+    volumeBtn.classList.toggle("off", !on);
+    volumeBtn.setAttribute(
+      "aria-label",
+      on ? "出力音声 オン（ショートカット: U）" : "出力音声 オフ（ショートカット: U）"
+    );
   }
   function setOutputVolume(value, persist = false) {
     const normalized = Math.max(0, Math.min(1, Number(value) || 0));
@@ -1190,7 +1179,7 @@ function setupControls(media) {
       toast("こちらで聞こえる音をミュートしました");
     } else {
       setOutputVolume(lastAudibleOutputVolume || 1, true);
-      toast(`出力音量を${Math.round(outputVolume * 100)}%に戻しました`);
+      toast("こちらで聞こえる音を元に戻しました");
     }
   }
   function syncScreenUI() {
@@ -1242,17 +1231,9 @@ function setupControls(media) {
   camBtn.addEventListener("click", toggleCamera);
   micBtn.addEventListener("click", toggleMic);
   volumeBtn.addEventListener("click", () => {
-    const show = outputVolumePopover.hidden;
-    closePopovers();
-    outputVolumePopover.hidden = !show;
-    volumeBtn.setAttribute("aria-expanded", show ? "true" : "false");
-    if (show) outputVolumeRange.focus();
+    toggleOutputMute();
     noteHudActivity();
   });
-  outputVolumeRange.addEventListener("input", () => {
-    setOutputVolume(Number(outputVolumeRange.value) / 100);
-  });
-  outputVolumeRange.addEventListener("change", () => saveOutputVolume(myId));
 
   // --- 画面共有 ---
   media.onScreenEnd = syncScreenUI; // ブラウザ側「共有を停止」にも追従
@@ -1420,12 +1401,6 @@ function setupControls(media) {
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      if (!outputVolumePopover.hidden) {
-        closePopovers();
-        volumeBtn.focus();
-        event.preventDefault();
-        return;
-      }
       if (!chatQuickPopover.hidden || !stampPopover.hidden) {
         const returnFocus = !chatQuickPopover.hidden ? chatBtn : stampBtn;
         closePopovers();
@@ -3855,7 +3830,6 @@ let wasInCall = false;
 // ポップオーバー/コンソールを開いている間は自動非表示しない（操作中に消えないように）
 function isHudPaused() {
   const bg = document.getElementById("bg-popover");
-  const volume = document.getElementById("output-volume-popover");
   const sp = document.getElementById("summon-panel");
   const mp = document.getElementById("chat-quick-popover");
   const stamp = document.getElementById("stamp-popover");
@@ -3865,7 +3839,6 @@ function isHudPaused() {
   const cp = document.getElementById("chat-panel");
   return (
     (bg && !bg.hidden) ||
-    (volume && !volume.hidden) ||
     (sp && !sp.hidden) ||
     (mp && !mp.hidden) ||
     (stamp && !stamp.hidden) ||
@@ -3889,14 +3862,12 @@ function cancelTransientHudOperations() {
     virtualQuestGate.closeModal();
     shouldBlur = true;
   }
-  for (const id of ["bg-popover", "output-volume-popover", "stamp-popover", "chat-quick-popover", "summon-panel"]) {
+  for (const id of ["bg-popover", "stamp-popover", "chat-quick-popover", "summon-panel"]) {
     const panel = document.getElementById(id);
     if (!panel || panel.hidden) continue;
     if (activeElement && panel.contains(activeElement)) shouldBlur = true;
     panel.hidden = true;
   }
-  const volumeBtn = document.getElementById("btn-volume");
-  if (volumeBtn) volumeBtn.setAttribute("aria-expanded", "false");
   if (shouldBlur && activeElement instanceof HTMLElement) activeElement.blur();
 }
 function hideHud() {

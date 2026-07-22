@@ -357,21 +357,6 @@ html, body {
 #btn-bg-image { width: 100%; margin-bottom: 8px; }
 #bg-note { font-size: 12px; color: #9aa4b8; display: block; }
 
-/* この端末で再生する音のマスター音量 */
-#output-volume-popover { width: min(260px, calc(100vw - 32px)); box-sizing: border-box; }
-.volume-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-  color: #e8edf7;
-  font-size: 13px;
-  font-weight: 700;
-}
-#output-volume-value { color: #fff; font-variant-numeric: tabular-nums; }
-#output-volume-range { width: 100%; margin: 0; }
-.volume-note { display: block; margin-top: 8px; color: #9aa4b8; font-size: 12px; }
-
 /* チャットのクイック入力ポップオーバー（入力エリアのみ） */
 #chat-quick-popover { width: min(320px, calc(100vw - 32px)); padding: 8px; }
 #chat-quick-input {

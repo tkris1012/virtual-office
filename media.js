@@ -19,8 +19,8 @@ export class MediaController {
     this.hasCamera = false;
     this.hasMic = false;
 
-    this.cameraOn = true;
-    this.micOn = true;
+    this.cameraOn = false;
+    this.micOn = false;
     this.mode = "none"; // 'none' | 'blur' | 'image'
     this.blurAmount = 8; // px
     this.bgImage = null; // HTMLImageElement / Canvas（バーチャル背景）
@@ -131,6 +131,9 @@ export class MediaController {
     this.audioTrack = this.rawStream.getAudioTracks()[0] || null;
     this.hasCamera = !!this.videoTrack;
     this.hasMic = !!this.audioTrack;
+    // 取得直後のトラックは既定でenabled=trueなので、既定オフの状態に合わせる
+    if (this.videoTrack) this.videoTrack.enabled = this.cameraOn;
+    if (this.audioTrack) this.audioTrack.enabled = this.micOn;
 
     // 隠しソース映像
     this.srcVideo = document.createElement("video");
