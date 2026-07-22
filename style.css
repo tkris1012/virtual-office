@@ -1182,11 +1182,12 @@ body.game-open #joystick {
 }
 .chat-head-text {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
   min-width: 0;
 }
-.chat-title { font-size: 16px; font-weight: 700; }
+.chat-title { font-size: 16px; font-weight: 700; flex-shrink: 0; }
 .chat-notice {
   margin: 0;
   color: #9aa4b8;
@@ -1229,10 +1230,11 @@ body.game-open #joystick {
 .chat-jump-latest:hover { filter: brightness(1.08); }
 .chat-empty { margin-top: 20px; color: #6f7a90; font-size: 12px; text-align: center; }
 .chat-msg { display: flex; }
-.chat-body { display: flex; flex-direction: column; gap: 2px; max-width: 80%; }
-.chat-msg.me .chat-body { align-items: flex-end; margin-left: auto; }
-.chat-name { font-size: 10px; color: #9aa4b8; }
+.chat-body { display: flex; align-items: flex-end; gap: 6px; max-width: 80%; }
+.chat-msg.me .chat-body { margin-left: auto; }
+.chat-name { font-size: 10px; color: #9aa4b8; flex-shrink: 0; white-space: nowrap; }
 .chat-bubble {
+  min-width: 0;
   padding: 3px 11px;
   border-radius: 12px;
   background: #232a3c;
