@@ -960,6 +960,68 @@ window.addEventListener("blur", syncActivePresence);
 const videosEl = document.getElementById("videos");
 const videoTiles = new Map(); // id -> wrapper element
 
+// ---- 発話検出（しゃべっている人のタイル枠を緑色にする） ----
+// 通知音と同じAudioContextを再利用する（unlockNotificationAudio()で入室操作の
+// ユーザージェスチャー内に既にresume済み＝自動再生制限に引っかからない）。
+function getSpeakingAudioCtx() {
+  const audio = ensureNotificationAudio();
+  if (audio && audio.state === "suspended") audio.resume().catch(() => {});
+  return audio;
+}
+const speakingWatchers = new Map(); // id -> { raf, source, analyser }
+const SPEAKING_LEVEL_THRESHOLD = 12; // 0-255スケール（周波数データの平均値）
+const SPEAKING_HOLD_MS = 250; // 短い無音での枠のちらつきを防ぐ
+
+function watchSpeaking(id, wrap, stream) {
+  stopWatchingSpeaking(id);
+  const audioTrack = stream.getAudioTracks()[0];
+  if (!audioTrack) return;
+  const ctx = getSpeakingAudioCtx();
+  if (!ctx) return;
+  let source, analyser;
+  try {
+    source = ctx.createMediaStreamSource(new MediaStream([audioTrack]));
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.6;
+    source.connect(analyser);
+  } catch (e) {
+    return; // トラック未準備など、失敗しても発話検出なしで通話自体は継続
+  }
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  let speaking = false;
+  let lastChange = 0;
+
+  const tick = () => {
+    analyser.getByteFrequencyData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i];
+    const level = sum / data.length;
+    const now = performance.now();
+    const shouldSpeak = level > SPEAKING_LEVEL_THRESHOLD;
+    if (shouldSpeak !== speaking && now - lastChange > SPEAKING_HOLD_MS) {
+      speaking = shouldSpeak;
+      lastChange = now;
+      wrap.classList.toggle("speaking", speaking);
+    }
+    const entry = speakingWatchers.get(id);
+    if (entry) entry.raf = requestAnimationFrame(tick);
+  };
+  speakingWatchers.set(id, { raf: requestAnimationFrame(tick), source, analyser });
+}
+function stopWatchingSpeaking(id) {
+  const w = speakingWatchers.get(id);
+  if (!w) return;
+  cancelAnimationFrame(w.raf);
+  try {
+    w.source.disconnect();
+  } catch (_) {}
+  try {
+    w.analyser.disconnect();
+  } catch (_) {}
+  speakingWatchers.delete(id);
+}
+
 // 画面共有の大画面表示
 const shareStage = document.getElementById("share-stage");
 const shareVideo = document.getElementById("share-video");
@@ -1003,6 +1065,7 @@ function makeTile(id, label, stream, muted, local) {
   videosEl.appendChild(wrap);
   videoTiles.set(id, wrap);
   tryPlay(v);
+  watchSpeaking(id, wrap, stream);
 }
 function addRemoteVideo(peerId, stream) {
   const existing = videoTiles.get(peerId);
@@ -1010,6 +1073,7 @@ function addRemoteVideo(peerId, stream) {
     const v = existing.querySelector("video");
     v.srcObject = stream;
     tryPlay(v);
+    watchSpeaking(peerId, existing, stream);
     return;
   }
   const name = (others[peerId] && others[peerId].name) || peerId;
@@ -1021,6 +1085,7 @@ function removeVideo(peerId) {
     el.remove();
     videoTiles.delete(peerId);
   }
+  stopWatchingSpeaking(peerId);
 }
 
 // ---- メディア操作バー（カメラ/マイク/背景）の配線 ----
@@ -1176,10 +1241,8 @@ function setupControls(media) {
     if (outputVolume > 0) {
       lastAudibleOutputVolume = outputVolume;
       setOutputVolume(0, true);
-      toast("こちらで聞こえる音をミュートしました");
     } else {
       setOutputVolume(lastAudibleOutputVolume || 1, true);
-      toast("こちらで聞こえる音を元に戻しました");
     }
   }
   function syncScreenUI() {
