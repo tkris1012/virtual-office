@@ -4031,11 +4031,13 @@ function updateHud(now) {
 
 // マップのシングルタップ/クリックで HUD をトグル、ダブルクリック/ダブルタップでその場所まで歩く
 // （ドラッグ/ピンチでは発動しない。シングルタップは少し待って2回目が来ないか確認してから確定）
+// ダブルクリックの2回目を押したまま動かすと、離すまでマウス位置へ追従し続ける。
 const DBLCLICK_MS = 300;
 let hudTapStart = null;
 let hudActivePointers = 0;
 let pendingHudToggleTimer = null;
 let lastTapEnd = null; // {x,y,t}
+let isHoldWalking = false; // ダブルクリック2回目を押しっぱなしでマウス追従中か
 canvas.addEventListener("pointerdown", (e) => {
   // チャット入力欄などにフォーカスがあってもマップクリックでフォーカスを奪わないようにする
   e.preventDefault();
@@ -4043,32 +4045,45 @@ canvas.addEventListener("pointerdown", (e) => {
   // 2本以上（ピンチ等）はタップ扱いにしない
   hudTapStart =
     hudActivePointers === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
+
+  // 直前のタップから素早く同じ位置に来た2回目のpointerdownなら、離すのを待たずに
+  // 即座に歩き始め、押している間はマウス位置へ追従し続けるモードに入る。
+  if (
+    hudTapStart &&
+    lastTapEnd &&
+    performance.now() - lastTapEnd.t < DBLCLICK_MS &&
+    Math.hypot(e.clientX - lastTapEnd.x, e.clientY - lastTapEnd.y) < 10
+  ) {
+    if (pendingHudToggleTimer) {
+      clearTimeout(pendingHudToggleTimer);
+      pendingHudToggleTimer = null;
+    }
+    lastTapEnd = null;
+    isHoldWalking = true;
+    startWalkTo(e.clientX, e.clientY);
+  }
+});
+window.addEventListener("pointermove", (e) => {
+  if (isHoldWalking) startWalkTo(e.clientX, e.clientY);
 });
 function hudPointerEnd(e) {
   hudActivePointers = Math.max(0, hudActivePointers - 1);
+  if (isHoldWalking) {
+    // ダブルクリック起因のホールド移動の終了。HUDトグル判定はしない。
+    isHoldWalking = false;
+    hudTapStart = null;
+    return;
+  }
   if (hudTapStart) {
     const dist = Math.hypot(e.clientX - hudTapStart.x, e.clientY - hudTapStart.y);
     const dt = performance.now() - hudTapStart.t;
     if (dist < 10 && dt < 250) {
-      const isDoubleClick =
-        lastTapEnd &&
-        performance.now() - lastTapEnd.t < DBLCLICK_MS &&
-        Math.hypot(e.clientX - lastTapEnd.x, e.clientY - lastTapEnd.y) < 10;
-      if (isDoubleClick) {
-        if (pendingHudToggleTimer) {
-          clearTimeout(pendingHudToggleTimer);
-          pendingHudToggleTimer = null;
-        }
-        lastTapEnd = null;
-        startWalkTo(e.clientX, e.clientY);
-      } else {
-        lastTapEnd = { x: e.clientX, y: e.clientY, t: performance.now() };
-        // すぐにトグルせず、2回目のタップ（ダブルクリック移動）が来ないか少し待つ
-        pendingHudToggleTimer = setTimeout(() => {
-          pendingHudToggleTimer = null;
-          toggleHud();
-        }, DBLCLICK_MS);
-      }
+      lastTapEnd = { x: e.clientX, y: e.clientY, t: performance.now() };
+      // すぐにトグルせず、2回目のタップ（ダブルクリック移動）が来ないか少し待つ
+      pendingHudToggleTimer = setTimeout(() => {
+        pendingHudToggleTimer = null;
+        toggleHud();
+      }, DBLCLICK_MS);
     }
   }
   hudTapStart = null;
@@ -4077,6 +4092,14 @@ canvas.addEventListener("pointerup", hudPointerEnd);
 canvas.addEventListener("pointercancel", () => {
   hudActivePointers = Math.max(0, hudActivePointers - 1);
   hudTapStart = null;
+  isHoldWalking = false;
+});
+// キャンバス外でマウスを離した場合にホールド移動が残り続けないための保険
+window.addEventListener("pointerup", () => {
+  isHoldWalking = false;
+});
+window.addEventListener("pointercancel", () => {
+  isHoldWalking = false;
 });
 
 function startWalkTo(clientX, clientY) {
