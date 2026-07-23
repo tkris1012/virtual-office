@@ -465,7 +465,7 @@ const npcBartenderImg = new Image();
 let npcBartenderImgReady = false;
 npcBartenderImg.onload = () => (npcBartenderImgReady = true);
 npcBartenderImg.src = "assets/sprites/npc/bartender.png";
-const NPC_BARTENDER = { x: (1180 / 1672) * W, y: (140 / 941) * H + 6 }; // office3-door.png のカフェカウンター内側
+const NPC_BARTENDER = { x: (1180 / 1672) * W, y: (140 / 941) * H + 7 }; // office3-door.png のカフェカウンター内側
 
 // 壁(通行不可)を正規化座標(0..1)で定義 → 実ピクセルへ変換。
 // ?debug のグリッドを見ながら office.png のレイアウトに合わせて調整する。
@@ -3207,7 +3207,9 @@ function render() {
     }
   }
   drawMessageBubble(me, true, myId);
-  if (currentArea === AREAS.OFFICE) drawMessageBubble(NPC_BARTENDER, false, NPC_BARTENDER_ID);
+  if (currentArea === AREAS.OFFICE) {
+    drawMessageBubble({ x: NPC_BARTENDER.x, y: NPC_BARTENDER.y + 12 }, false, NPC_BARTENDER_ID);
+  }
 
   ctx.setTransform(1, 0, 0, 1, 0, 0); // 後始末
 }
