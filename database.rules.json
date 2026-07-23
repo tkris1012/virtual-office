@@ -23,6 +23,19 @@
           ".read": "auth != null",
           "$uid": {
             ".write": "auth != null && auth.uid === $uid",
+            "hp": {
+              ".validate": "!newData.exists() || (newData.isNumber() && newData.val() >= 0 && newData.val() <= 100)"
+            },
+            "runtime": {
+              "action": {
+                ".validate": "!newData.exists() || (newData.hasChildren(['id', 'type', 'facing', 'startedAt']) && newData.child('id').isString() && newData.child('id').val().length > 0 && newData.child('id').val().length <= 64 && newData.child('type').val() === 'skeleton_slash' && (newData.child('facing').val() === 'up' || newData.child('facing').val() === 'left' || newData.child('facing').val() === 'down' || newData.child('facing').val() === 'right') && newData.child('startedAt').isNumber())",
+                "targets": {
+                  "$targetUid": {
+                    ".validate": "newData.val() === true"
+                  }
+                }
+              }
+            },
             "message": {
               ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 15)"
             },
