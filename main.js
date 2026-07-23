@@ -2106,6 +2106,8 @@ function flushPosition(now) {
 
 // ---- 入力 ----
 const keys = {};
+let walkTarget = null; // ダブルクリック/ダブルタップで指定した目的地 {x,y}（手動入力があれば即解除）
+const WALK_TARGET_EPS = 4; // これ以下の距離まで近づいたら到着扱い
 const MOVEMENT_KEYS = new Set(["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"]);
 addEventListener("keydown", (e) => {
   const key = e.key.toLowerCase();
@@ -2212,6 +2214,9 @@ function step() {
   if (keys["arrowleft"] || keys["a"]) dx -= 1;
   if (keys["arrowright"] || keys["d"]) dx += 1;
 
+  const manualInput = !!(dx || dy) || (joy.active && (joy.dx || joy.dy));
+  if (manualInput) walkTarget = null; // WASD/ジョイスティック操作が来たらダブルクリック移動は解除
+
   if (dx || dy) {
     // キーボード: 単位ベクトル化して等速移動
     const len = Math.hypot(dx, dy);
@@ -2221,6 +2226,17 @@ function step() {
     // ジョイスティック: 倒し具合(0..1)を速度に反映
     dx = joy.dx;
     dy = joy.dy;
+  } else if (walkTarget) {
+    // ダブルクリック/ダブルタップで指定した目的地へ自動で歩く
+    const tdx = walkTarget.x - me.x;
+    const tdy = walkTarget.y - me.y;
+    const dist = Math.hypot(tdx, tdy);
+    if (dist < WALK_TARGET_EPS) {
+      walkTarget = null;
+    } else {
+      dx = tdx / dist;
+      dy = tdy / dist;
+    }
   }
 
   if (SPRITE_TEST) updateSpriteFacing(me, dx, dy);
@@ -2229,15 +2245,18 @@ function step() {
     noteHudActivity(); // 移動操作で HUD を表示維持＆自動非表示タイマーをリセット
     // X/Y を別々に判定 → 壁沿いに滑れる
     const nx = me.x + dx * SPEED;
-    if (canBeAt(nx, me.y)) {
+    const movedX = canBeAt(nx, me.y);
+    if (movedX) {
       me.x = nx;
       dirty = true;
     }
     const ny = me.y + dy * SPEED;
-    if (canBeAt(me.x, ny)) {
+    const movedY = canBeAt(me.x, ny);
+    if (movedY) {
       me.y = ny;
       dirty = true;
     }
+    if (walkTarget && !movedX && !movedY) walkTarget = null; // 壁などで進めない場合は諦める
   }
 }
 
@@ -3969,10 +3988,16 @@ function updateHud(now) {
   }
 }
 
-// マップのシングルタップ/クリックで HUD をトグル（ドラッグ/ピンチでは発動しない）
+// マップのシングルタップ/クリックで HUD をトグル、ダブルクリック/ダブルタップでその場所まで歩く
+// （ドラッグ/ピンチでは発動しない。シングルタップは少し待って2回目が来ないか確認してから確定）
+const DBLCLICK_MS = 300;
 let hudTapStart = null;
 let hudActivePointers = 0;
+let pendingHudToggleTimer = null;
+let lastTapEnd = null; // {x,y,t}
 canvas.addEventListener("pointerdown", (e) => {
+  // チャット入力欄などにフォーカスがあってもマップクリックでフォーカスを奪わないようにする
+  e.preventDefault();
   hudActivePointers++;
   // 2本以上（ピンチ等）はタップ扱いにしない
   hudTapStart =
@@ -3983,7 +4008,27 @@ function hudPointerEnd(e) {
   if (hudTapStart) {
     const dist = Math.hypot(e.clientX - hudTapStart.x, e.clientY - hudTapStart.y);
     const dt = performance.now() - hudTapStart.t;
-    if (dist < 10 && dt < 250) toggleHud(); // 移動<10px・250ms以内 のみトグル
+    if (dist < 10 && dt < 250) {
+      const isDoubleClick =
+        lastTapEnd &&
+        performance.now() - lastTapEnd.t < DBLCLICK_MS &&
+        Math.hypot(e.clientX - lastTapEnd.x, e.clientY - lastTapEnd.y) < 10;
+      if (isDoubleClick) {
+        if (pendingHudToggleTimer) {
+          clearTimeout(pendingHudToggleTimer);
+          pendingHudToggleTimer = null;
+        }
+        lastTapEnd = null;
+        startWalkTo(e.clientX, e.clientY);
+      } else {
+        lastTapEnd = { x: e.clientX, y: e.clientY, t: performance.now() };
+        // すぐにトグルせず、2回目のタップ（ダブルクリック移動）が来ないか少し待つ
+        pendingHudToggleTimer = setTimeout(() => {
+          pendingHudToggleTimer = null;
+          toggleHud();
+        }, DBLCLICK_MS);
+      }
+    }
   }
   hudTapStart = null;
 }
@@ -3992,6 +4037,20 @@ canvas.addEventListener("pointercancel", () => {
   hudActivePointers = Math.max(0, hudActivePointers - 1);
   hudTapStart = null;
 });
+
+function startWalkTo(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const s = camera.zoom * dpr;
+  const halfW = canvas.width / 2 / s;
+  const halfH = canvas.height / 2 / s;
+  const worldX = (clientX - rect.left) / camera.zoom - halfW + camera.x;
+  const worldY = (clientY - rect.top) / camera.zoom - halfH + camera.y;
+  walkTarget = {
+    x: Math.max(R, Math.min(W - R, worldX)),
+    y: Math.max(R, Math.min(H - R, worldY)),
+  };
+  noteHudActivity();
+}
 
 function loop(now) {
   const t = now || performance.now();
