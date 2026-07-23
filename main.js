@@ -576,16 +576,18 @@ function isPlayerInCurrentArea(player) {
 //  靴・アクセサリーを個別に組み合わせて1体を合成する。
 // =============================================================
 const CUSTOM_SPRITE_ID = "custom";
-const PLAYER_MAX_HP = 100;
+const NORMAL_MAX_HP = 100;
+const SKELETON_MAX_HP = 200;
 const SKELETON_ATTACK_DAMAGE = 25;
 const SKELETON_ATTACK_RANGE = 64;
 const SKELETON_ATTACK_HALF_WIDTH = 32;
 const SKELETON_ATTACK_ACTION_TYPE = "skeleton_slash";
 const SKELETON_ATTACK_DAMAGE_ACCEPT_MS = 1600;
-
-function normalizePlayerHp(value) {
-  return Number.isFinite(value) ? Math.max(0, Math.min(PLAYER_MAX_HP, Math.round(value))) : PLAYER_MAX_HP;
-}
+const COMBAT_DEFEAT_ACCEPT_MS = 5000;
+const COMBAT_PHASE_NORMAL = "normal";
+const COMBAT_PHASE_SKELETON = "skeleton";
+const SKELETON_ORIGIN_CURSE = "curse";
+const SKELETON_ORIGIN_SELECTED = "selected";
 
 const BODY_TYPE_OPTIONS = [
   { id: "male", label: "男性" },
@@ -635,6 +637,129 @@ function sanitizeSpriteParts(raw) {
   };
 }
 
+function sanitizeSpriteCharacterId(value) {
+  return value === CUSTOM_SPRITE_ID || spriteCharacterById(value)
+    ? value
+    : DEFAULT_SPRITE_CHARACTER_ID;
+}
+
+function appearanceSnapshot(spriteCharacterId, spriteParts) {
+  return {
+    spriteCharacterId: sanitizeSpriteCharacterId(spriteCharacterId),
+    spriteParts: sanitizeSpriteParts(spriteParts),
+  };
+}
+
+function isSkeletonAppearance(spriteCharacterId, spriteParts) {
+  return (
+    spriteCharacterId === "skeleton" ||
+    (spriteCharacterId === CUSTOM_SPRITE_ID && spriteParts?.bodyType === "skeleton")
+  );
+}
+
+function clampCombatNumber(value, max, fallback = max) {
+  return Number.isFinite(value) ? Math.max(0, Math.min(max, Math.round(value))) : fallback;
+}
+
+function createCombatStateForAppearance(spriteCharacterId, spriteParts) {
+  const selectedSkeleton = isSkeletonAppearance(spriteCharacterId, spriteParts);
+  return {
+    phase: selectedSkeleton ? COMBAT_PHASE_SKELETON : COMBAT_PHASE_NORMAL,
+    normalHp: NORMAL_MAX_HP,
+    skeletonHp: SKELETON_MAX_HP,
+    skeletonOrigin: selectedSkeleton ? SKELETON_ORIGIN_SELECTED : null,
+    returnAppearance: null,
+    pkStreak: 0,
+    lastDefeat: null,
+  };
+}
+
+function sanitizeDefeatEvent(value) {
+  if (!value || typeof value !== "object") return null;
+  if (
+    typeof value.id !== "string" ||
+    !value.id ||
+    value.id.length > 64 ||
+    typeof value.attackerId !== "string" ||
+    !value.attackerId ||
+    typeof value.attackId !== "string" ||
+    !value.attackId ||
+    !Number.isFinite(value.at)
+  ) {
+    return null;
+  }
+  return {
+    id: value.id,
+    attackerId: value.attackerId,
+    attackId: value.attackId,
+    at: value.at,
+  };
+}
+
+function sanitizeCombatState(raw, spriteCharacterId, spriteParts, legacyHp) {
+  const selectedSkeleton = isSkeletonAppearance(spriteCharacterId, spriteParts);
+  if (!raw || typeof raw !== "object") {
+    const migrated = createCombatStateForAppearance(spriteCharacterId, spriteParts);
+    if (!selectedSkeleton && Number.isFinite(legacyHp)) {
+      migrated.normalHp = clampCombatNumber(legacyHp, NORMAL_MAX_HP);
+      if (migrated.normalHp <= 0) {
+        migrated.phase = COMBAT_PHASE_SKELETON;
+        migrated.skeletonOrigin = SKELETON_ORIGIN_CURSE;
+        migrated.returnAppearance = appearanceSnapshot(spriteCharacterId, spriteParts);
+      }
+    }
+    return migrated;
+  }
+
+  const phase =
+    raw.phase === COMBAT_PHASE_SKELETON ? COMBAT_PHASE_SKELETON : COMBAT_PHASE_NORMAL;
+  const combat = {
+    phase,
+    normalHp: clampCombatNumber(raw.normalHp, NORMAL_MAX_HP),
+    skeletonHp: clampCombatNumber(raw.skeletonHp, SKELETON_MAX_HP),
+    skeletonOrigin: null,
+    returnAppearance: null,
+    pkStreak:
+      phase === COMBAT_PHASE_SKELETON
+        ? Math.max(0, Math.min(9999, Math.round(Number(raw.pkStreak) || 0)))
+        : 0,
+    lastDefeat: sanitizeDefeatEvent(raw.lastDefeat),
+  };
+
+  if (phase === COMBAT_PHASE_SKELETON) {
+    combat.skeletonOrigin =
+      raw.skeletonOrigin === SKELETON_ORIGIN_CURSE
+        ? SKELETON_ORIGIN_CURSE
+        : SKELETON_ORIGIN_SELECTED;
+    if (combat.skeletonOrigin === SKELETON_ORIGIN_CURSE) {
+      const fallback = appearanceSnapshot(spriteCharacterId, spriteParts);
+      combat.returnAppearance = appearanceSnapshot(
+        raw.returnAppearance?.spriteCharacterId || fallback.spriteCharacterId,
+        raw.returnAppearance?.spriteParts || fallback.spriteParts
+      );
+    }
+  }
+  return combat;
+}
+
+function isSkeletonCombatant(player) {
+  return player?.combat?.phase === COMBAT_PHASE_SKELETON;
+}
+
+function activeCombatHp(player) {
+  const combat = player?.combat;
+  if (combat?.phase === COMBAT_PHASE_SKELETON) {
+    return {
+      current: clampCombatNumber(combat.skeletonHp, SKELETON_MAX_HP),
+      max: SKELETON_MAX_HP,
+    };
+  }
+  return {
+    current: clampCombatNumber(combat?.normalHp, NORMAL_MAX_HP),
+    max: NORMAL_MAX_HP,
+  };
+}
+
 const me = {
   x: W * 0.45, // 中央の島デスクあたり
   y: H * 0.5,
@@ -645,9 +770,52 @@ const me = {
   iconUrl: "", // アップロード画像URL（iconType==="upload"）
   spriteCharacterId: DEFAULT_SPRITE_CHARACTER_ID, // マップ上のキャラクター（プリセット選択時）。パーツ個別編集時は CUSTOM_SPRITE_ID
   spriteParts: defaultPartsForCharacter(DEFAULT_SPRITE_CHARACTER_ID), // パーツ個別編集の現在値（体型・髪型・トップス・ボトムス・靴・アクセサリー）
-  hp: PLAYER_MAX_HP,
+  combat: createCombatStateForAppearance(
+    DEFAULT_SPRITE_CHARACTER_ID,
+    defaultPartsForCharacter(DEFAULT_SPRITE_CHARACTER_ID)
+  ),
   active: false, // このタブが表示中かつ通話準備済み
 };
+
+function selectPlayerAppearance(spriteCharacterId, spriteParts) {
+  const currentCombat = sanitizeCombatState(me.combat, me.spriteCharacterId, me.spriteParts);
+  if (
+    currentCombat.phase === COMBAT_PHASE_SKELETON &&
+    currentCombat.skeletonOrigin === SKELETON_ORIGIN_CURSE
+  ) {
+    toast("💀 呪われている間は衣装を変更できません");
+    return false;
+  }
+
+  const nextAppearance = appearanceSnapshot(spriteCharacterId, spriteParts);
+  const nextIsSkeleton = isSkeletonAppearance(
+    nextAppearance.spriteCharacterId,
+    nextAppearance.spriteParts
+  );
+  me.spriteCharacterId = nextAppearance.spriteCharacterId;
+  me.spriteParts = nextAppearance.spriteParts;
+
+  if (nextIsSkeleton) {
+    if (
+      currentCombat.phase !== COMBAT_PHASE_SKELETON ||
+      currentCombat.skeletonOrigin !== SKELETON_ORIGIN_SELECTED
+    ) {
+      me.combat = createCombatStateForAppearance(me.spriteCharacterId, me.spriteParts);
+    } else {
+      me.combat = currentCombat;
+    }
+  } else if (currentCombat.phase === COMBAT_PHASE_SKELETON) {
+    me.combat = createCombatStateForAppearance(me.spriteCharacterId, me.spriteParts);
+  } else {
+    me.combat = currentCombat;
+    me.combat.phase = COMBAT_PHASE_NORMAL;
+    me.combat.skeletonOrigin = null;
+    me.combat.returnAppearance = null;
+    me.combat.pkStreak = 0;
+  }
+  return true;
+}
+
 camera.x = me.x; // 開始時のカメラを自分に合わせる（追従の初期ジャンプ防止）
 camera.y = me.y;
 const others = {}; // id -> {x, y, name, color, active?, announcing?, summon?}
@@ -687,6 +855,7 @@ const BUBBLE_DURATION_MS = 8000;
 const chatBubbles = new Map();
 const seenStampEventIds = new Map();
 const lastProcessedCombatActionIds = new Map();
+const lastProcessedDefeatIds = new Map();
 const peersInChimeRange = new Set();
 const lastProximityChimeAt = new Map();
 const activeStamps = [];
@@ -881,6 +1050,7 @@ function normalizePlayer(id, value) {
       ? requestedCharacterId
       : DEFAULT_SPRITE_CHARACTER_ID;
   const spriteParts = sanitizeSpriteParts(value.spriteParts);
+  const combat = sanitizeCombatState(value.combat, spriteCharacterId, spriteParts, value.hp);
   const area = normalizeArea(value.area);
   return {
     ...value,
@@ -893,7 +1063,7 @@ function normalizePlayer(id, value) {
     iconUrl: useUpload ? iconUrl : "",
     spriteCharacterId,
     spriteParts,
-    hp: normalizePlayerHp(value.hp),
+    combat,
     area,
     questAreaName: area !== AREAS.OFFICE ? safeDisplayName(value.questAreaName, AREA_LABELS[area]) : "",
   };
@@ -934,7 +1104,7 @@ function currentPresencePayload() {
     iconUrl: me.iconType === "upload" ? me.iconUrl || "" : "",
     spriteCharacterId: me.spriteCharacterId || DEFAULT_SPRITE_CHARACTER_ID,
     spriteParts: me.spriteParts || defaultPartsForCharacter(DEFAULT_SPRITE_CHARACTER_ID),
-    hp: normalizePlayerHp(me.hp),
+    combat: sanitizeCombatState(me.combat, me.spriteCharacterId, me.spriteParts),
     announcing: !!announcing,
     sharing: !!(media && media.screenOn),
     area: currentArea,
@@ -1624,6 +1794,7 @@ function removeOtherPlayer(id) {
   chatBubbles.delete(id);
   seenStampEventIds.delete(id);
   lastProcessedCombatActionIds.delete(id);
+  lastProcessedDefeatIds.delete(id);
   peersInChimeRange.delete(id);
   lastProximityChimeAt.delete(id);
   if (rtc) rtc.disconnectFrom(id);
@@ -2071,6 +2242,7 @@ async function initPresence() {
       validOtherIds.add(id);
       carrySpriteAnimationState(player, others[id]);
       syncRemoteCombatAction(id, player, now);
+      processRemoteDefeat(id, player, now);
       others[id] = player;
       processStampEvents(id, player.stampEvents);
     }
@@ -2646,7 +2818,7 @@ function getCustomSpriteCanvas(parts) {
 // spriteParts は normalizePlayer/applyProfileToMe で受信時に既に sanitizeSpriteParts 済み
 // という前提だが、resolveCustomLayers 自体も不正なIDを黙ってスキップするため二重に安全。
 function getPlayerSpriteCanvas(p) {
-  if (normalizePlayerHp(p?.hp) <= 0) return getSpriteCharacterCanvas("skeleton");
+  if (isSkeletonCombatant(p)) return getSpriteCharacterCanvas("skeleton");
   if (p.spriteCharacterId === CUSTOM_SPRITE_ID) {
     return getCustomSpriteCanvas(p.spriteParts);
   }
@@ -2655,7 +2827,7 @@ function getPlayerSpriteCanvas(p) {
 
 function isSkeletonSprite(p) {
   return (
-    normalizePlayerHp(p?.hp) <= 0 ||
+    isSkeletonCombatant(p) ||
     p?.spriteCharacterId === "skeleton" ||
     (p?.spriteCharacterId === CUSTOM_SPRITE_ID && p?.spriteParts?.bodyType === "skeleton")
   );
@@ -2723,16 +2895,133 @@ function startSpriteAttack(p, now) {
   return true;
 }
 
-function receiveSkeletonAttackDamage(attackerName) {
-  const before = normalizePlayerHp(me.hp);
-  if (before <= 0) return;
-  me.hp = Math.max(0, before - SKELETON_ATTACK_DAMAGE);
-  if (meRef) update(meRef, { hp: me.hp }).catch(() => {});
-  if (me.hp <= 0) {
-    toast(`💀 ${attackerName}の攻撃でHPが0になり、スケルトンの姿になりました`);
-  } else {
-    toast(`⚔ ${attackerName}の攻撃を受けました（HP ${me.hp}/${PLAYER_MAX_HP}）`);
+function combatPayloadForDatabase(combat, useServerDefeatTimestamp = false) {
+  const payload = {
+    phase: combat.phase,
+    normalHp: combat.normalHp,
+    skeletonHp: combat.skeletonHp,
+    pkStreak: combat.phase === COMBAT_PHASE_SKELETON ? combat.pkStreak : 0,
+  };
+  if (combat.skeletonOrigin) payload.skeletonOrigin = combat.skeletonOrigin;
+  if (combat.returnAppearance) payload.returnAppearance = combat.returnAppearance;
+  if (combat.lastDefeat) {
+    payload.lastDefeat = {
+      ...combat.lastDefeat,
+      at: useServerDefeatTimestamp ? serverTimestamp() : combat.lastDefeat.at,
+    };
   }
+  return payload;
+}
+
+function publishLocalCombat({ appearanceChanged = false, defeatChanged = false } = {}) {
+  if (!meRef) return;
+  const payload = {
+    combat: combatPayloadForDatabase(me.combat, defeatChanged),
+  };
+  if (appearanceChanged) {
+    payload.spriteCharacterId = me.spriteCharacterId;
+    payload.spriteParts = me.spriteParts;
+  }
+  update(meRef, payload).catch((error) => console.warn("戦闘状態の同期に失敗:", error));
+}
+
+function createDefeatEvent(attackerId, attackId) {
+  return {
+    id: createEventId(),
+    attackerId,
+    attackId,
+    at: presenceServerNow(),
+  };
+}
+
+function enterCursedSkeleton(attackerId, attackId) {
+  const returnAppearance = appearanceSnapshot(me.spriteCharacterId, me.spriteParts);
+  me.combat = {
+    phase: COMBAT_PHASE_SKELETON,
+    normalHp: 0,
+    skeletonHp: SKELETON_MAX_HP,
+    skeletonOrigin: SKELETON_ORIGIN_CURSE,
+    returnAppearance,
+    pkStreak: 0,
+    lastDefeat: createDefeatEvent(attackerId, attackId),
+  };
+  publishLocalCombat({ defeatChanged: true });
+}
+
+function leaveSkeletonAfterDefeat(attackerId, attackId) {
+  const previousCombat = me.combat;
+  const restoreAppearance =
+    previousCombat.skeletonOrigin === SKELETON_ORIGIN_CURSE && previousCombat.returnAppearance
+      ? appearanceSnapshot(
+          previousCombat.returnAppearance.spriteCharacterId,
+          previousCombat.returnAppearance.spriteParts
+        )
+      : appearanceSnapshot(
+          DEFAULT_SPRITE_CHARACTER_ID,
+          defaultPartsForCharacter(DEFAULT_SPRITE_CHARACTER_ID)
+        );
+
+  me.spriteCharacterId = restoreAppearance.spriteCharacterId;
+  me.spriteParts = restoreAppearance.spriteParts;
+  me.combat = createCombatStateForAppearance(me.spriteCharacterId, me.spriteParts);
+  me.combat.lastDefeat = createDefeatEvent(attackerId, attackId);
+  publishLocalCombat({ appearanceChanged: true, defeatChanged: true });
+
+  if (previousCombat.skeletonOrigin === SKELETON_ORIGIN_SELECTED) saveProfile();
+}
+
+function receiveSkeletonAttackDamage(attackerId, attackerName, attackId) {
+  const combat = sanitizeCombatState(me.combat, me.spriteCharacterId, me.spriteParts);
+  me.combat = combat;
+
+  if (combat.phase === COMBAT_PHASE_SKELETON) {
+    if (combat.skeletonHp <= 0) return;
+    combat.skeletonHp = Math.max(0, combat.skeletonHp - SKELETON_ATTACK_DAMAGE);
+    if (combat.skeletonHp <= 0) {
+      const wasCursed = combat.skeletonOrigin === SKELETON_ORIGIN_CURSE;
+      leaveSkeletonAfterDefeat(attackerId, attackId);
+      toast(
+        wasCursed
+          ? `✨ ${attackerName}の攻撃で呪いが解け、本来の衣装へ戻りました`
+          : `✨ ${attackerName}の攻撃でスケルトンが解除され、デフォルト衣装へ戻りました`
+      );
+    } else {
+      publishLocalCombat();
+      toast(`⚔ ${attackerName}の攻撃を受けました（スケルトンHP ${combat.skeletonHp}/${SKELETON_MAX_HP}）`);
+    }
+    return;
+  }
+
+  if (combat.normalHp <= 0) return;
+  combat.normalHp = Math.max(0, combat.normalHp - SKELETON_ATTACK_DAMAGE);
+  if (combat.normalHp <= 0) {
+    enterCursedSkeleton(attackerId, attackId);
+    toast(`💀 ${attackerName}の攻撃で呪われたスケルトンになりました`);
+  } else {
+    publishLocalCombat();
+    toast(`⚔ ${attackerName}の攻撃を受けました（HP ${combat.normalHp}/${NORMAL_MAX_HP}）`);
+  }
+}
+
+function processRemoteDefeat(playerId, player, serverNow) {
+  const defeat = player?.combat?.lastDefeat;
+  if (!defeat) return;
+  if (lastProcessedDefeatIds.get(playerId) === defeat.id) return;
+  lastProcessedDefeatIds.set(playerId, defeat.id);
+
+  const elapsed = serverNow - defeat.at;
+  if (
+    defeat.attackerId !== myId ||
+    elapsed < -PRESENCE_FUTURE_TOLERANCE_MS ||
+    elapsed > COMBAT_DEFEAT_ACCEPT_MS ||
+    !isSkeletonCombatant(me)
+  ) {
+    return;
+  }
+
+  me.combat.pkStreak = Math.min(9999, Math.max(0, me.combat.pkStreak || 0) + 1);
+  if (meRef) update(meRef, { "combat/pkStreak": me.combat.pkStreak }).catch(() => {});
+  toast(`💀 PK成功（連続 ${me.combat.pkStreak}人）`);
 }
 
 function syncRemoteCombatAction(attackerId, player, serverNow) {
@@ -2765,7 +3054,7 @@ function syncRemoteCombatAction(attackerId, player, serverNow) {
     action.targets &&
     action.targets[myId] === true
   ) {
-    receiveSkeletonAttackDamage(player.name);
+    receiveSkeletonAttackDamage(attackerId, player.name, action.id);
   }
 }
 
@@ -3081,6 +3370,28 @@ function drawPresenceRing(cx, cy, halfW, halfH, strokeColor, glowColor, lineWidt
   ctx.restore();
 }
 
+function skeletonTitleForPk(pkStreak) {
+  if (pkStreak >= 100) return "百魂を従えし";
+  if (pkStreak >= 50) return "死者の軍勢を率いる";
+  if (pkStreak >= 10) return "冥界を歩む";
+  if (pkStreak >= 3) return "魂狩りの";
+  return "";
+}
+
+function playerNameSegments(p, isMe) {
+  const name = safeDisplayName(p.name, isMe ? defaultName : "ゲスト");
+  const normalColor = isMe ? "#63e6d4" : "#fff";
+  if (!isSkeletonCombatant(p)) return [{ text: name, color: normalColor }];
+
+  const pkStreak = Math.max(0, Math.round(Number(p.combat?.pkStreak) || 0));
+  const title = skeletonTitleForPk(pkStreak);
+  const suffix = pkStreak > 0 ? ` 💀×${pkStreak}` : "";
+  return [
+    { text: "呪われた ", color: "#c77dff" },
+    { text: `${title}${name}${suffix}`, color: normalColor },
+  ];
+}
+
 function drawAvatar(p, isMe, connected) {
   const r = AVATAR_R;
   // [試作] ドット絵スプライトに差し替え（?spritetest 時、全員に適用）。
@@ -3153,28 +3464,38 @@ function drawAvatar(p, isMe, connected) {
   }
 
   ctx.font = "bold 13px sans-serif";
-  ctx.textAlign = "center";
-  const label = safeDisplayName(p.name, isMe ? defaultName : "ゲスト");
   // アイコン(円/半径r)とスプライトで頭頂の高さが違う。スプライト側はセル内の実際の
   // 髪の生え際（実測）を基準にすることで、絵の余白ぶん名前が浮くのを防ぐ
   const avatarTopOffset = spriteDrawn ? SPRITE_HEAD_TOP_OFFSET - SPRITE_FEET_OFFSET : r;
   const labelY = p.y - avatarTopOffset - 4;
-  const hp = normalizePlayerHp(p.hp);
-  const hpRatio = hp / PLAYER_MAX_HP;
+  const hp = activeCombatHp(p);
+  const hpRatio = hp.current / hp.max;
   const hpBarWidth = 38;
   const hpBarHeight = 4;
   const hpBarX = p.x - hpBarWidth / 2;
-  const hpBarY = labelY - 13;
+  const hpBarY = labelY - 19; // 従来位置からバー本体4px＋上下枠線2pxぶん上へ移動
   ctx.fillStyle = "rgba(0,0,0,0.72)";
   ctx.fillRect(hpBarX - 1, hpBarY - 1, hpBarWidth + 2, hpBarHeight + 2);
-  ctx.fillStyle = hpRatio > 0.5 ? "#51cf66" : hpRatio > 0.25 ? "#ffd43b" : "#ff6b6b";
+  if (isSkeletonCombatant(p)) {
+    ctx.fillStyle = hpRatio > 0.5 ? "#c77dff" : hpRatio > 0.25 ? "#9775fa" : "#7048e8";
+  } else {
+    ctx.fillStyle = hpRatio > 0.5 ? "#51cf66" : hpRatio > 0.25 ? "#ffd43b" : "#ff6b6b";
+  }
   ctx.fillRect(hpBarX, hpBarY, hpBarWidth * hpRatio, hpBarHeight);
+
+  const nameSegments = playerNameSegments(p, isMe);
+  const totalNameWidth = nameSegments.reduce((sum, segment) => sum + ctx.measureText(segment.text).width, 0);
+  let nameX = p.x - totalNameWidth / 2;
+  ctx.textAlign = "left";
   ctx.lineWidth = 3;
-  ctx.strokeStyle = "rgba(0,0,0,0.7)"; // 明るい背景でも読めるよう縁取り
-  ctx.strokeText(label, p.x, labelY);
-  // 自分の名前だけアクセントカラーにして、テキストを増やさずに「自分」とわかるようにする
-  ctx.fillStyle = isMe ? "#63e6d4" : "#fff";
-  ctx.fillText(label, p.x, labelY);
+  ctx.strokeStyle = "rgba(0,0,0,0.7)";
+  for (const segment of nameSegments) {
+    ctx.strokeText(segment.text, nameX, labelY);
+    ctx.fillStyle = segment.color;
+    ctx.fillText(segment.text, nameX, labelY);
+    nameX += ctx.measureText(segment.text).width;
+  }
+  ctx.textAlign = "center";
 }
 
 function drawFloor() {
@@ -4736,6 +5057,7 @@ function applyProfileToMe(p) {
       ? p.spriteCharacterId
       : DEFAULT_SPRITE_CHARACTER_ID;
   me.spriteParts = sanitizeSpriteParts(p.spriteParts);
+  me.combat = createCombatStateForAppearance(me.spriteCharacterId, me.spriteParts);
 }
 
 // サインイン直後に呼ぶ。クラウドと端末の控えの「新しい方」を採用する。
@@ -4813,6 +5135,7 @@ function saveProfile() {
       iconUrl: data.iconUrl,
       spriteCharacterId: data.spriteCharacterId,
       spriteParts: data.spriteParts,
+      combat: combatPayloadForDatabase(me.combat),
     }).catch(() => {});
   }
   // 自分の映像タイルの名前も更新
@@ -5031,8 +5354,7 @@ function renderAvatarEditorGrid() {
         selected: me.spriteCharacterId === c.id,
         thumbnail: (canvasEl) => drawCharacterThumbnail(canvasEl, c.id),
         onClick: () => {
-          me.spriteCharacterId = c.id;
-          me.spriteParts = defaultPartsForCharacter(c.id);
+          if (!selectPlayerAppearance(c.id, defaultPartsForCharacter(c.id))) return;
           renderConsolePreview();
           renderAvatarEditorGrid();
         },
@@ -5049,8 +5371,7 @@ function renderAvatarEditorGrid() {
         selected: me.spriteParts.bodyType === opt.id,
         thumbnail: (canvasEl) => drawSpriteSheetThumbnail(canvasEl, () => getCustomSpriteCanvas({ bodyType: opt.id })),
         onClick: () => {
-          me.spriteCharacterId = CUSTOM_SPRITE_ID;
-          me.spriteParts = { ...BODY_TYPE_DEFAULT_PARTS[opt.id] };
+          if (!selectPlayerAppearance(CUSTOM_SPRITE_ID, { ...BODY_TYPE_DEFAULT_PARTS[opt.id] })) return;
           renderConsolePreview();
           renderAvatarEditorGrid();
         },
@@ -5071,8 +5392,7 @@ function renderAvatarEditorGrid() {
       selected: !me.spriteParts[category],
       thumbnail: (canvasEl) => canvasEl.getContext("2d").clearRect(0, 0, canvasEl.width, canvasEl.height),
       onClick: () => {
-        me.spriteCharacterId = CUSTOM_SPRITE_ID;
-        me.spriteParts = { ...me.spriteParts, [category]: null };
+        if (!selectPlayerAppearance(CUSTOM_SPRITE_ID, { ...me.spriteParts, [category]: null })) return;
         renderConsolePreview();
         renderAvatarEditorGrid();
       },
@@ -5085,8 +5405,7 @@ function renderAvatarEditorGrid() {
       selected: me.spriteParts[category] === part.id,
       thumbnail: (canvasEl) => drawPartSwatchThumbnail(canvasEl, part.file),
       onClick: () => {
-        me.spriteCharacterId = CUSTOM_SPRITE_ID;
-        me.spriteParts = { ...me.spriteParts, [category]: part.id };
+        if (!selectPlayerAppearance(CUSTOM_SPRITE_ID, { ...me.spriteParts, [category]: part.id })) return;
         renderConsolePreview();
         renderAvatarEditorGrid();
       },

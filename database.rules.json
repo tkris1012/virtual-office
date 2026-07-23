@@ -23,8 +23,11 @@
           ".read": "auth != null",
           "$uid": {
             ".write": "auth != null && auth.uid === $uid",
-            "hp": {
-              ".validate": "!newData.exists() || (newData.isNumber() && newData.val() >= 0 && newData.val() <= 100)"
+            "combat": {
+              ".validate": "!newData.exists() || (newData.hasChildren(['phase', 'normalHp', 'skeletonHp', 'pkStreak']) && (newData.child('phase').val() === 'normal' || newData.child('phase').val() === 'skeleton') && newData.child('normalHp').isNumber() && newData.child('normalHp').val() >= 0 && newData.child('normalHp').val() <= 100 && newData.child('skeletonHp').isNumber() && newData.child('skeletonHp').val() >= 0 && newData.child('skeletonHp').val() <= 200 && newData.child('pkStreak').isNumber() && newData.child('pkStreak').val() >= 0 && newData.child('pkStreak').val() <= 9999 && (!newData.hasChild('skeletonOrigin') || newData.child('skeletonOrigin').val() === 'curse' || newData.child('skeletonOrigin').val() === 'selected'))",
+              "lastDefeat": {
+                ".validate": "!newData.exists() || (newData.hasChildren(['id', 'attackerId', 'attackId', 'at']) && newData.child('id').isString() && newData.child('id').val().length > 0 && newData.child('id').val().length <= 64 && newData.child('attackerId').isString() && newData.child('attackerId').val().length > 0 && newData.child('attackId').isString() && newData.child('attackId').val().length > 0 && newData.child('at').isNumber())"
+              }
             },
             "runtime": {
               "action": {
