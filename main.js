@@ -2704,6 +2704,24 @@ function drawBartenderNpc() {
   ctx.restore();
 }
 
+// カフェNPCが時々つぶやく一言（既存のchatBubbles/drawMessageBubbleをそのまま流用）
+const NPC_BARTENDER_ID = "npc-bartender";
+const NPC_BARTENDER_LINES = [
+  "一杯どうですか？",
+  "今日のおすすめはカフェラテです",
+  "コーヒー、淹れたてですよ",
+  "休憩していきませんか？",
+  "何かお探しですか？",
+  "疲れた時はカフェインを",
+];
+function scheduleNpcBartenderChatter() {
+  const text = NPC_BARTENDER_LINES[Math.floor(Math.random() * NPC_BARTENDER_LINES.length)];
+  chatBubbles.set(NPC_BARTENDER_ID, { text, expiresAt: Date.now() + BUBBLE_DURATION_MS });
+  const delay = 15000 + Math.random() * 10000; // 15〜25秒間隔でランダムに
+  setTimeout(scheduleNpcBartenderChatter, delay);
+}
+scheduleNpcBartenderChatter();
+
 const MESSAGE_MAX_WIDTH = 120;
 const MESSAGE_PADDING_X = 5;
 const MESSAGE_PADDING_Y = 4;
@@ -3189,6 +3207,7 @@ function render() {
     }
   }
   drawMessageBubble(me, true, myId);
+  if (currentArea === AREAS.OFFICE) drawMessageBubble(NPC_BARTENDER, false, NPC_BARTENDER_ID);
 
   ctx.setTransform(1, 0, 0, 1, 0, 0); // 後始末
 }
