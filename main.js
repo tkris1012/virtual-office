@@ -460,6 +460,13 @@ let officeExtensionDoorSealImgReady = false;
 officeExtensionDoorSealImg.onload = () => (officeExtensionDoorSealImgReady = true);
 officeExtensionDoorSealImg.src = "assets/effects/door-magic-seal.png";
 
+// カフェカウンターに常時立っているNPC（バーテンダー・装飾のみ・当たり判定なし）
+const npcBartenderImg = new Image();
+let npcBartenderImgReady = false;
+npcBartenderImg.onload = () => (npcBartenderImgReady = true);
+npcBartenderImg.src = "assets/sprites/npc/bartender.png";
+const NPC_BARTENDER = { x: (1180 / 1672) * W, y: (140 / 941) * H }; // office3-door.png のカフェカウンター内側
+
 // 壁(通行不可)を正規化座標(0..1)で定義 → 実ピクセルへ変換。
 // ?debug のグリッドを見ながら office.png のレイアウトに合わせて調整する。
 const WALL_RECTS_N = [
@@ -2685,6 +2692,18 @@ function drawSpriteAvatar(p) {
   return true;
 }
 
+// カフェカウンターの装飾NPC（常時1体・下向き固定・当たり判定なし）を描画する
+function drawBartenderNpc() {
+  if (!npcBartenderImgReady) return;
+  const destH = SPRITE_DRAW_HEIGHT;
+  const destW = destH;
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(NPC_BARTENDER.x, NPC_BARTENDER.y + SPRITE_FEET_OFFSET);
+  ctx.drawImage(npcBartenderImg, -destW / 2, -destH, destW, destH);
+  ctx.restore();
+}
+
 const MESSAGE_MAX_WIDTH = 120;
 const MESSAGE_PADDING_X = 5;
 const MESSAGE_PADDING_Y = 4;
@@ -3148,6 +3167,7 @@ function render() {
   if (currentArea === AREAS.OFFICE) {
     drawZones();
     if (virtualQuestGate) virtualQuestGate.draw(ctx, now);
+    drawBartenderNpc();
   }
 
   if (DEBUG) drawDebug();

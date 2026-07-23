@@ -1,0 +1,31 @@
+assets/sprites/npc/bartender.png のクレジット。
+
+カフェカウンターに常時立っている装飾NPC（当たり判定なし・アニメーションなし・
+下向き1フレーム固定）。Universal LPC Spritesheet Generator（
+https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator ）
+の素材を、既存の assets/sprites/parts/ にあるパーツと同じ組み合わせ方式で
+1枚の静止画（64x64・下向き・アイドルフレーム）に合成したもの。
+
+使用パーツ（重ね順）:
+1. body/body_color__light_male.png        （assets/sprites/parts/ に既存。クレジットは各キャラクターフォルダのcredits参照）
+2. shoes/basic_shoes__black_male.png       （同上）
+3. bottoms/formal_pants__black_.png を元に、緑がかった配色をパレット置換で
+   黒系に色変更したもの（元ファイル自体の色が「black」の名前に反して
+   緑色になっているバグを迂回するための対処。陰影構造は維持）。
+4. tops/collared_formal_longsleeve__white_.png （既存）
+5. tops/vest__black_.png（新規取得）
+   元ファイル: torso/clothes/vest/male/walk/black.png
+   作者: bluecarrot16, Thane Brimhall (pennomi), laetissima,
+         Stephen Challener (Redshrike), Johannes Sjölund (wulax)
+   ライセンス: CC-BY-SA 3.0, GPL 3.0
+   URL: https://opengameart.org/content/lpc-2-characters,
+        https://opengameart.org/content/lpc-gentleman,
+        https://opengameart.org/content/lpc-pirates
+   備考: 色変更なし（生成元に黒の配色が既に用意されている）。
+6. accessories/necktie__maroon_.png        （既存）
+7. body/human_male__light_.png（顔）        （既存）
+8. hair/buzzcut__dark_brown_.png            （既存）
+
+「既存」と記載したパーツの詳細なクレジットは、それぞれ
+assets/sprites/parts/credits/credits.txt および
+assets/sprites/lpc_*/credits/ 配下の各credits.txt/csvを参照。
